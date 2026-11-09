@@ -7,7 +7,7 @@
 enum { ACT_LOGIN = 1, ACT_LOGOUT = 2, ACT_SEND = 3, ACT_OPEN_FOLDER = 4, ACT_CHECK_HOTKEY = 5 };
 
 typedef struct {
-	GtkWidget *hotkey, *copyfb, *remote, *server, *email, *password, *login, *logout;
+	GtkWidget *hotkey, *quick, *copyfb, *remote, *server, *email, *password, *login, *logout;
 	GtkWidget *login_status, *unsynced, *send, *message, *remote_box;
 } widgets;
 
@@ -86,6 +86,16 @@ static gboolean on_hotkey_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
 	return TRUE;
 }
 
+// the quick-save box: the same, and Backspace or Delete empties it (= off)
+static gboolean on_quick_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
+	if ((ev->keyval == GDK_KEY_BackSpace || ev->keyval == GDK_KEY_Delete)
+	    && !(ev->state & gtk_accelerator_get_default_mod_mask())) {
+		gtk_entry_set_text(GTK_ENTRY(e), "");
+		return TRUE;
+	}
+	return on_hotkey_key(e, ev, d);
+}
+
 static GtkWidget *label(const char *t) {
 	GtkWidget *l = gtk_label_new(t);
 	gtk_widget_set_halign(l, GTK_ALIGN_START);
@@ -120,6 +130,16 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 	gtk_editable_set_editable(GTK_EDITABLE(w.hotkey), FALSE);
 	g_signal_connect(w.hotkey, "key-press-event", G_CALLBACK(on_hotkey_key), NULL);
 	gtk_grid_attach(GTK_GRID(g), w.hotkey, 1, r++, 1, 1);
+
+	gtk_grid_attach(GTK_GRID(g), label("Quick save"), 0, r, 1, 1);
+	w.quick = gtk_entry_new();
+	gtk_widget_set_hexpand(w.quick, TRUE);
+	gtk_entry_set_text(GTK_ENTRY(w.quick), in->quick_hotkey);
+	gtk_entry_set_placeholder_text(GTK_ENTRY(w.quick), "off - click here, press a combination (Backspace clears)");
+	gtk_widget_set_tooltip_text(w.quick, "Stores the selected text at once, with no form and no tags. Does nothing when no text is selected.");
+	gtk_editable_set_editable(GTK_EDITABLE(w.quick), FALSE);
+	g_signal_connect(w.quick, "key-press-event", G_CALLBACK(on_quick_key), NULL);
+	gtk_grid_attach(GTK_GRID(g), w.quick, 1, r++, 1, 1);
 
 	gtk_grid_attach(GTK_GRID(g), label("Form size"), 0, r, 1, 1);
 	GtkWidget *hb = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -229,14 +249,19 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 		// a new hotkey is checked (and tried) before the window closes, so a
 		// combination another program owns is refused here, with a reason
 		const char *hk = gtk_entry_get_text(GTK_ENTRY(w.hotkey));
+		const char *qk = gtk_entry_get_text(GTK_ENTRY(w.quick));
 		if (strcmp(hk, in->hotkey) != 0) {
-			if (!act(&w, ACT_CHECK_HOTKEY, hk, "", "", 0)) continue;
+			if (!act(&w, ACT_CHECK_HOTKEY, hk, qk, "", 0)) continue;
+		}
+		if (qk[0] && strcmp(qk, in->quick_hotkey) != 0) {
+			if (!act(&w, ACT_CHECK_HOTKEY, qk, hk, "", 0)) continue;
 		}
 		saved = 1;
 		break;
 	}
 	if (saved) {
 		out->hotkey = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.hotkey)));
+		out->quick_hotkey = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.quick)));
 		out->width = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(sw));
 		out->height = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(sh));
 		out->remote = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w.remote));

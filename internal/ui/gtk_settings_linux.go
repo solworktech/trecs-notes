@@ -55,7 +55,7 @@ func ShowSettings(d SettingsData, h SettingsHandler) (SettingsResult, error) {
 		return 0
 	}
 	in := C.settings_in{
-		hotkey: cs(d.Hotkey), width: C.int(d.Width), height: C.int(d.Height), remote: b2i(d.Remote), copy_fallback: b2i(d.CopyFallback),
+		hotkey: cs(d.Hotkey), quick_hotkey: cs(d.QuickHotkey), width: C.int(d.Width), height: C.int(d.Height), remote: b2i(d.Remote), copy_fallback: b2i(d.CopyFallback),
 		server: cs(d.Server), email: cs(d.Email), password: cs(d.Password), login_status: cs(d.LoginStatus),
 		unsynced: C.int(d.Unsynced), db_path: cs(d.DBPath),
 		icon: (*C.uchar)(icon), iconlen: C.int(len(iconPNG)),
@@ -68,11 +68,12 @@ func ShowSettings(d SettingsData, h SettingsHandler) (SettingsResult, error) {
 		return SettingsResult{}, nil
 	}
 	defer C.g_free(C.gpointer(out.hotkey))
+	defer C.g_free(C.gpointer(out.quick_hotkey))
 	defer C.g_free(C.gpointer(out.server))
 	defer C.g_free(C.gpointer(out.email))
 	defer C.g_free(C.gpointer(out.password))
 	return SettingsResult{
-		Hotkey: C.GoString(out.hotkey), Width: int(out.width), Height: int(out.height),
+		Hotkey: C.GoString(out.hotkey), QuickHotkey: C.GoString(out.quick_hotkey), Width: int(out.width), Height: int(out.height),
 		Remote: out.remote != 0, CopyFallback: out.copy_fallback != 0, Server: C.GoString(out.server), Email: C.GoString(out.email),
 		Password: C.GoString(out.password), Saved: true,
 	}, nil

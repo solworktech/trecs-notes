@@ -10,7 +10,7 @@ int trecs_form(const char *app, const char *title, const char *text,
                char **o_app, char **o_title, char **o_tags, char **o_text);
 
 typedef struct {
-	const char *hotkey;
+	const char *hotkey, *quick_hotkey;
 	int width, height;
 	int remote, copy_fallback;
 	const char *server, *email, *password;
@@ -22,7 +22,7 @@ typedef struct {
 } settings_in;
 
 typedef struct {
-	char *hotkey;
+	char *hotkey, *quick_hotkey;
 	int width, height;
 	int remote, copy_fallback;
 	char *server, *email, *password;
@@ -31,11 +31,13 @@ typedef struct {
 // 1 = saved, 0 = cancelled, -1 = GTK could not start.
 int trecs_settings(const settings_in *in, settings_out *out);
 
-// Implemented in Go (gtk_linux.go): the settings window's buttons call it.
-// Returns a malloc'd "message \x1f login status \x1f unsynced \x1f ok(0/1)".
 // Implemented in Go (gtk_render_linux.go): text for the note area, as styled
 // runs or colour spans (see internal/render). Returns a malloc'd string.
 extern char *goRender(int op, char *a, char *b);
 
+// Implemented in Go (gtk_settings_linux.go): the settings window's buttons
+// call it. Returns a malloc'd "message \x1f login status \x1f unsynced \x1f
+// ok(0/1)".
 extern char *goSettingsAction(int action, char *a1, char *a2, char *a3);
+
 #endif

@@ -47,7 +47,10 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "capture":
-			runOneCapture()
+			runOneCapture(false)
+			return
+		case "quick": // like the quick-save hotkey: store the selection, no form
+			runOneCapture(true)
 			return
 		case "dialog": // internal: the capture form, run as a child process (see internal/ui)
 			ui.SetIcon(trayIconPNG)
@@ -89,12 +92,16 @@ func newApp() (*app, error) {
 	return &app{db: db, cfg: cfg}, nil
 }
 
-func runOneCapture() {
+func runOneCapture(quick bool) {
 	a, err := newApp()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() { _ = a.db.Close() }()
+	if quick {
+		a.doQuickSave()
+		return
+	}
 	a.doCapture()
 }
 
@@ -129,11 +136,59 @@ func runTray() {
 		log.Printf("hotkey not registered (%v); bind `trecs-notes capture` in your desktop's own shortcut settings instead", err)
 	}
 
+	a.registerQuick()
+
 	tray.Run(trayIconPNG, tray.Callbacks{
 		OnSettings: a.openSettings,
 		OnBrowse:   a.openBrowse,
 		OnQuit:     quit,
 	})
+}
+
+// registerQuick binds the quick-save hotkey, if there is one and it is not
+// the same as the form's.
+func (a *app) registerQuick() {
+	spec := a.cfg.QuickHotkey
+	if spec == "" || spec == a.cfg.Hotkey {
+		return
+	}
+	if _, err := hotkey.Register(spec, a.doQuickSave); err != nil {
+		log.Printf("quick-save hotkey not registered (%v); bind `trecs-notes quick` in your desktop's own shortcut settings instead", err)
+	}
+}
+
+// doQuickSave is the quick-save hotkey's whole job: capture and store, with
+// no form. Without selected text it does nothing.
+func (a *app) doQuickSave() {
+	if cfg, err := config.Load(); err == nil {
+		a.cfg = cfg
+	}
+	snap := capture.Capture(capture.Options{CopyFallback: a.cfg.CopyFallback})
+	for _, w := range snap.Warnings {
+		log.Printf("capture: %s", w)
+	}
+	note, ok := snap.QuickNote()
+	if !ok {
+		log.Printf("quick save: no selected text, nothing stored")
+		return
+	}
+	a.save(note)
+	log.Printf("quick save: stored %d characters from %q", len(note.Text), note.AppName)
+}
+
+// save stores a note and, if sync is on, sends it on in the background.
+func (a *app) save(note model.Note) {
+	if err := a.db.Insert(&note); err != nil {
+		log.Printf("saving note: %v", err)
+		return
+	}
+	if a.cfg.RemoteSyncEnabled {
+		go func() {
+			if err := remote.SyncNote(a.db, note); err != nil {
+				log.Printf("sync: %v", err)
+			}
+		}()
+	}
 }
 
 // doCapture is the hotkey's (and `trecs-notes capture`'s) entire job:
@@ -177,18 +232,7 @@ func (a *app) doCapture() {
 		Text:        result.Text,
 		Tags:        tags,
 	}
-	if err := a.db.Insert(&note); err != nil {
-		log.Printf("saving note: %v", err)
-		return
-	}
-
-	if a.cfg.RemoteSyncEnabled {
-		go func() {
-			if err := remote.SyncNote(a.db, note); err != nil {
-				log.Printf("sync: %v", err)
-			}
-		}()
-	}
+	a.save(note)
 }
 
 // openBrowse is a placeholder for the next pass: list/search notes.

@@ -29,7 +29,11 @@
 // what happens when something cannot be read.
 package capture
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/solworktech/trecs-notes/internal/model"
+)
 
 // Snapshot is what was captured, best-effort. A zero-value field (AppName,
 // WindowTitle or SelectedText all empty) is not an error - some apps and
@@ -97,4 +101,13 @@ func IsTerminal(name string) bool {
 		}
 	}
 	return false
+}
+
+// QuickNote is the note a quick save stores for this capture: no tags, and
+// none at all (ok=false) when no text could be read.
+func (s Snapshot) QuickNote() (note model.Note, ok bool) {
+	if strings.TrimSpace(s.SelectedText) == "" {
+		return model.Note{}, false
+	}
+	return model.Note{AppName: s.AppName, WindowTitle: s.WindowTitle, Text: s.SelectedText}, true
 }

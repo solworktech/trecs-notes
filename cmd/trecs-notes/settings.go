@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,10 +64,10 @@ func (a *app) openSettings() {
 		return
 	}
 	a.cfg = after
-	if after.Hotkey != before.Hotkey {
+	if after.Hotkey != before.Hotkey || after.QuickHotkey != before.QuickHotkey {
 		// The grab can't be swapped in place (see internal/hotkey: Unregister
 		// blocks on Linux), so start a fresh copy and let this one go.
-		log.Printf("hotkey changed to %s: restarting", after.Hotkey)
+		log.Printf("hotkey changed: restarting")
 		next := exec.Command(exe)
 		next.Stdout, next.Stderr = os.Stdout, os.Stderr
 		if err := next.Start(); err != nil {
@@ -128,13 +129,14 @@ func runSettingsProcess() int {
 	dbPath, _ := config.DBPath()
 	stored, _ := credentials.Load()
 	data := ui.SettingsData{
-		Hotkey: cfg.Hotkey, Width: cfg.Width, Height: cfg.Height,
+		Hotkey: cfg.Hotkey, QuickHotkey: cfg.QuickHotkey, Width: cfg.Width, Height: cfg.Height,
 		Remote: cfg.RemoteSyncEnabled, CopyFallback: cfg.CopyFallback,
 		Server:      firstNonEmpty(cfg.Server, stored.Server, api.ResolveServer("")),
 		Email:       firstNonEmpty(stored.Email, cfg.Email),
 		Password:    stored.Password,
 		LoginStatus: loginStatus(), Unsynced: unsynced, DBPath: dbPath,
 	}
+	own := []string{cfg.Hotkey, cfg.QuickHotkey}
 	h := func(action int, a1, a2, a3 string) ui.SettingsReply {
 		var r ui.SettingsReply
 		if action == ui.ActSend {
@@ -142,10 +144,10 @@ func runSettingsProcess() int {
 			if err != nil {
 				return ui.SettingsReply{Message: err.Error(), Unsynced: unsynced}
 			}
-			r = settingsAction(d, cfg.Hotkey, action, a1, a2, a3)
+			r = settingsAction(d, own, action, a1, a2, a3)
 			unsynced, _ = d.CountUnsynced()
 		} else {
-			r = settingsAction(nil, cfg.Hotkey, action, a1, a2, a3)
+			r = settingsAction(nil, own, action, a1, a2, a3)
 		}
 		r.Unsynced = unsynced
 		return r
@@ -161,7 +163,7 @@ func runSettingsProcess() int {
 	if !res.Saved {
 		return 0
 	}
-	cfg.Hotkey, cfg.Width, cfg.Height = res.Hotkey, res.Width, res.Height
+	cfg.Hotkey, cfg.QuickHotkey, cfg.Width, cfg.Height = res.Hotkey, res.QuickHotkey, res.Width, res.Height
 	cfg.CopyFallback = res.CopyFallback
 	cfg.RemoteSyncEnabled, cfg.Server = res.Remote, strings.TrimSpace(res.Server)
 	cfg.Email = strings.TrimSpace(res.Email)
@@ -194,7 +196,7 @@ func loginStatus() string {
 	return "Not logged in"
 }
 
-func settingsAction(db *localdb.DB, currentHotkey string, action int, a1, a2, a3 string) ui.SettingsReply {
+func settingsAction(db *localdb.DB, ownHotkeys []string, action int, a1, a2, a3 string) ui.SettingsReply {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	switch action {
@@ -237,7 +239,10 @@ func settingsAction(db *localdb.DB, currentHotkey string, action int, a1, a2, a3
 		}
 		return ui.SettingsReply{OK: true}
 	case ui.ActCheckHotkey:
-		if a1 == currentHotkey {
+		if a2 != "" && a1 == a2 { // a2: the other hotkey
+			return ui.SettingsReply{Message: "the two hotkeys must differ"}
+		}
+		if slices.Contains(ownHotkeys, a1) { // held by this very app already
 			return ui.SettingsReply{OK: true}
 		}
 		if _, _, err := hotkey.Parse(a1); err != nil {

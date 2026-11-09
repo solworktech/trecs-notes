@@ -57,6 +57,10 @@ The tray icon uses the StatusNotifier (AppIndicator) protocol. KDE, XFCE, Cinnam
 2. Press the hotkey.
 3. Check the fields, add tags (space or comma separated; start typing for suggestions from tags you already use) and press **Save**.
 
+### Quick save
+
+A second hotkey (`Ctrl+Alt+Shift+Space` by default) stores the selected text at once: no form, so no tags. It uses the same capture as the first hotkey. If no text is selected, nothing happens and nothing is stored. Set it in **Settings** (**Quick save**); press Backspace in that box to turn it off. Without a global hotkey (Wayland), bind `trecs-notes quick` instead. Quick saves are synced like any other note when syncing is on.
+
 The tray menu has **Settings**, **Browse notes** (not built yet) and **Quit**. Quitting also closes an open form.
 
 ### Raw and Markdown
@@ -74,6 +78,7 @@ Tags are lowercase letters, digits and single hyphens, 2 to 32 characters, at mo
 | Setting | What it does |
 |---|---|
 | Hotkey | Click the field and press the combination you want. It needs at least one modifier. A combination another program already holds is refused with a message. Changing it restarts the app. |
+| Quick save | The hotkey that stores the selection without showing the form. Set the same way; Backspace empties it, which turns it off. It has to differ from the Hotkey. |
 | Form size | The capture form's width and height, in pixels. |
 | Try copying | For applications that do not report their selection, send the copy shortcut as a last resort. Off by default; see [How it works](#how-it-works). |
 | Also save notes to a trecs server | Turns on [syncing](#syncing-to-a-trecs-server). |
@@ -108,7 +113,7 @@ Everything is under `$XDG_CONFIG_HOME/trecs/notes/` (or `~/trecs/notes/` when `X
 
 Linux on X11 is where this is developed and tested. Be aware of the rest:
 
-- **Wayland:** a program cannot register a global hotkey on its own; the protocol does not allow it. Bind the command `trecs-notes capture` to a key in your compositor's or desktop's keyboard settings instead. Reading the application name and window title is implemented for sway, Hyprland, niri, KDE (with `kdotool`) and GNOME (through an extension), but only the X11 path has been tested.
+- **Wayland:** a program cannot register a global hotkey on its own; the protocol does not allow it. Bind the command `trecs-notes capture` (and `trecs-notes quick` for the quick save) to a key in your compositor's or desktop's keyboard settings instead. Reading the application name and window title is implemented for sway, Hyprland, niri, KDE (with `kdotool`) and GNOME (through an extension), but only the X11 path has been tested.
 - **macOS and Windows:** the code is written - hotkey, selection capture, the capture form - but it has not been run on those systems yet. The CI builds and tests it on both, which is how problems there will show up. Reports are welcome. Chromium-based browsers and Electron applications only expose their selection once an assistive tool asks for it, so the first capture in one may come back empty. On macOS the first capture asks for the Accessibility permission (System Settings > Privacy & Security > Accessibility).
 - **Settings and Browse notes** are Linux-only for now (see above); Browse notes is not built on any platform yet.
 

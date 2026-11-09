@@ -61,6 +61,10 @@ func configPath() (string, error) {
 // run doesn't silently fail to register.
 const DefaultHotkey = "Ctrl+Alt+Space"
 
+// DefaultQuickHotkey stores the selection straight away, without the form.
+// Empty in the config turns the quick save off.
+const DefaultQuickHotkey = "Ctrl+Alt+Shift+Space"
+
 // DefaultServer is the server used when nothing else says which. A release
 // build sets it exactly as trecs does:
 //
@@ -92,6 +96,10 @@ type Config struct {
 	// every person) tends to already have opinions about.
 	Hotkey string `json:"hotkey"`
 
+	// QuickHotkey saves the current selection at once, with no tags and no
+	// form; nothing happens if no text is selected. Empty = not bound.
+	QuickHotkey string `json:"quick_hotkey"`
+
 	// Width and Height are the capture form's default size.
 	Width  int `json:"width"`
 	Height int `json:"height"`
@@ -117,7 +125,7 @@ type Config struct {
 }
 
 func defaults() Config {
-	return Config{Hotkey: DefaultHotkey, Width: DefaultWidth, Height: DefaultHeight}
+	return Config{Hotkey: DefaultHotkey, QuickHotkey: DefaultQuickHotkey, Width: DefaultWidth, Height: DefaultHeight}
 }
 
 // Load reads the saved config, or returns the defaults if none has been

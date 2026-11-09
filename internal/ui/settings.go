@@ -3,6 +3,7 @@ package ui
 // SettingsData is what the Settings window opens with.
 type SettingsData struct {
 	Hotkey       string
+	QuickHotkey  string // "" = not bound
 	Width        int
 	Height       int
 	CopyFallback bool
@@ -18,6 +19,7 @@ type SettingsData struct {
 // SettingsResult is what was saved; Saved=false means cancelled.
 type SettingsResult struct {
 	Hotkey       string
+	QuickHotkey  string // "" = not bound
 	Width        int
 	Height       int
 	CopyFallback bool
