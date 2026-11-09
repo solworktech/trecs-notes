@@ -31,7 +31,9 @@ jobs:
         with:
           go-version: stable
       - name: Install the GTK and X11 development files
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libx11-dev
+        run: |
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libx11-dev
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -53,12 +55,20 @@ jobs:
         with:
           go-version: stable
       - name: Install the GTK and X11 development files
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libx11-dev
-      # .goreleaser.yaml builds amd64; this runner builds arm64
+        run: |
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libx11-dev
       - name: Build for arm64
         run: |
-          sed -i 's/^    goarch: \[amd64\]$/    goarch: [arm64]/' .goreleaser.yaml
+          # .goreleaser.yaml says `goarch: [amd64]`. GoReleaser takes no
+          # template there, and cgo needs a native build, so this runner
+          # swaps in arm64. \s* keeps it working if the indentation or the
+          # spacing in that line ever changes.
+          sed -i 's/^\(\s*\)goarch:\s*\[amd64\]\s*$/\1goarch: [arm64]/' \
+            .goreleaser.yaml
+          # show the result in the log, and fail if nothing changed
           grep -n 'goarch' .goreleaser.yaml
+          grep -q 'goarch: \[arm64\]' .goreleaser.yaml
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser

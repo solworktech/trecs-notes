@@ -13,8 +13,10 @@ package credentials
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/solworktech/trecs-notes/internal/config"
 	"github.com/zalando/go-keyring"
@@ -24,6 +26,24 @@ const (
 	service = "trecs-notes"
 	account = "login"
 )
+
+// keyringTimeout bounds every keyring call. A keyring can wait for a person
+// to answer a prompt (a locked macOS keychain, a Secret Service asking for
+// the login password) and a program with no one to answer would otherwise
+// wait forever: a CI runner hung for ten minutes on exactly that. On timeout
+// the call counts as failed and the file fallback is used.
+var keyringTimeout = 10 * time.Second
+
+func withTimeout(d time.Duration, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return fmt.Errorf("the keyring did not answer within %s", d)
+	}
+}
 
 // Login is the stored login.
 type Login struct {
@@ -46,7 +66,8 @@ func Save(l Login) (where string, err error) {
 	if err != nil {
 		return "", err
 	}
-	if kerr := keyring.Set(service, account, string(data)); kerr == nil {
+	kerr := withTimeout(keyringTimeout, func() error { return keyring.Set(service, account, string(data)) })
+	if kerr == nil {
 		_ = removeFile() // never leave a stale plain-text copy behind
 		return "the system keyring", nil
 	}
@@ -70,10 +91,10 @@ func Save(l Login) (where string, err error) {
 // Load returns the stored login, if any.
 func Load() (Login, bool) {
 	var l Login
-	if s, err := keyring.Get(service, account); err == nil {
-		if json.Unmarshal([]byte(s), &l) == nil {
-			return l, true
-		}
+	var s string
+	err := withTimeout(keyringTimeout, func() (err error) { s, err = keyring.Get(service, account); return })
+	if err == nil && json.Unmarshal([]byte(s), &l) == nil {
+		return l, true
 	}
 	if p, err := filePath(); err == nil {
 		if data, err := os.ReadFile(p); err == nil && json.Unmarshal(data, &l) == nil {
@@ -85,9 +106,8 @@ func Load() (Login, bool) {
 
 // Delete forgets the stored login everywhere.
 func Delete() {
-	if err := keyring.Delete(service, account); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		_ = err // no keyring running: nothing to delete there
-	}
+	// no keyring running, or nothing stored there: nothing to delete
+	_ = withTimeout(keyringTimeout, func() error { return keyring.Delete(service, account) })
 	_ = removeFile()
 }
 

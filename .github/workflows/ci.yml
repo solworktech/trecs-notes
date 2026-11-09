@@ -32,8 +32,8 @@ jobs:
       # xclip: the selection reader the capture code shells out to
       - name: Install the build and test dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libx11-dev xvfb xclip
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libx11-dev xvfb xclip
 
       - name: Vet
         run: go vet ./...
@@ -46,7 +46,7 @@ jobs:
         run: go build -tags nogtk -o /dev/null ./cmd/trecs-notes
 
       - name: Test
-        run: xvfb-run -a go test ./... -v
+        run: xvfb-run -a go test ./... -v -timeout 5m
 
   # The macOS and Windows code is written but has not been run by its author
   # yet: these jobs are how it gets compiled and tested at all, so a red
@@ -58,6 +58,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
+    env:
+      # The tray and hotkey libraries both link -lobjc, which Apple's linker
+      # warns about on every build. Harmless; silenced on macOS only (the
+      # flag needs Xcode 15's linker, which the runner has).
+      CGO_LDFLAGS: >-
+        ${{ matrix.os == 'macos-latest'
+        && '-Wl,-no_warn_duplicate_libraries' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -69,4 +76,4 @@ jobs:
       - name: Build
         run: go build ./...
       - name: Test
-        run: go test ./... -v
+        run: go test ./... -v -timeout 5m
