@@ -1,0 +1,68 @@
+---
+name: goreleaser
+
+"on":
+  push:
+    # run only against tags
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+# The binary links GTK 3 and X11 through cgo, so it cannot be cross-compiled:
+# each architecture is built on a machine of its own, and both add their files
+# to the same release (release.mode: keep-existing in .goreleaser.yaml).
+#
+# ubuntu-22.04 on purpose, not ubuntu-latest: a binary needs at least the glibc
+# of the system that built it, and 22.04's (2.35) is old enough for Debian 12,
+# Ubuntu 22.04 and RHEL 9 onwards. GitHub could retire this image before
+# Ubuntu 22.04's support ends (April 2027); when that happens, build inside a
+# container (`container: debian:12`) instead.
+jobs:
+  amd64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Install the GTK and X11 development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libx11-dev
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  arm64:
+    # after amd64, so the two never race to create the release
+    needs: amd64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Install the GTK and X11 development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libx11-dev
+      # .goreleaser.yaml builds amd64; this runner builds arm64
+      - name: Build for arm64
+        run: |
+          sed -i 's/^    goarch: \[amd64\]$/    goarch: [arm64]/' .goreleaser.yaml
+          grep -n 'goarch' .goreleaser.yaml
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

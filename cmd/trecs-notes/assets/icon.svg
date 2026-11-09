@@ -1,0 +1,11 @@
+<svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#0a0a0a"/>
+  <rect x="4" y="4.5" width="8" height="2.2" rx="1.1" fill="#00ff66"/>
+  <rect x="4" y="8.9" width="12" height="2.2" rx="1.1" fill="#00ff66"/>
+  <rect x="4" y="13.3" width="6" height="2.2" rx="1.1" fill="#00ff66"/>
+  <!-- sticky-note badge (replaces the play button): white note, folded corner, one ink line -->
+  <path d="M12.2 12.4 H20.4 a1.6 1.6 0 0 1 1.6 1.6 V18 L17.6 22.6 H12.2 a1.6 1.6 0 0 1 -1.6 -1.6 V14 a1.6 1.6 0 0 1 1.6 -1.6 Z" fill="#f2f2f2"/>
+  <path d="M22 18 H19.2 a1.6 1.6 0 0 0 -1.6 1.6 V22.6 Z" fill="#00ff66"/>
+  <rect x="12.4" y="15" width="5.6" height="1.5" rx=".75" fill="#0a0a0a"/>
+  <rect x="12.4" y="18" width="3.6" height="1.5" rx=".75" fill="#0a0a0a"/>
+</svg>

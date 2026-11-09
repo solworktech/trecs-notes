@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Trecs Notes
+GenericName=Snippet notes
+Comment=Save selected text from any application as a note
+Exec=trecs-notes
+Icon=trecs-notes
+Terminal=false
+Categories=Utility;
+Keywords=notes;snippets;clipboard;trecs;
+StartupNotify=false

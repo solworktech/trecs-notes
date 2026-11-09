@@ -1,0 +1,136 @@
+---
+version: 2
+# Check the documentation at https://goreleaser.com
+#
+# trecs-notes links GTK 3 and X11 through cgo, so unlike trecs it cannot be
+# cross-compiled with CGO_ENABLED=0: each architecture is built natively
+# (see "Building" below), and only Linux is configured here for now.
+#
+# Building
+#   Build on the OLDEST distribution you intend to support (a Debian 12 or
+#   Ubuntu 22.04 container with libgtk-3-dev and libx11-dev installed): a
+#   binary needs at least the glibc it was built against, and GTK 3's own
+#   interface is stable, so one build then runs on everything newer. Built on
+#   Ubuntu 24.04 it requires glibc 2.34 and will not start on, say, RHEL 8.
+#   Build the arm64 package on an arm64 machine (e.g. GitHub's
+#   ubuntu-24.04-arm runner) and amd64 on an amd64 one:
+#       goreleaser release --clean --skip=publish   # then upload per arch
+#   or locally:   goreleaser release --snapshot --clean
+project_name: trecs-notes
+
+builds:
+  - id: trecs-notes
+    main: ./cmd/trecs-notes
+    binary: trecs-notes
+    env: [CGO_ENABLED=1]
+    goos: [linux]
+    # One architecture per machine; set it with GOARCH-matching runners, or
+    # list both and run goreleaser on each (the other one then fails to link).
+    goarch: [amd64]
+    ldflags:
+      - -s -w
+      - -X main.defaultServer=https://trecs.run
+
+archives:
+  - formats: [tar.gz]
+    # OS and arch names compatible with `uname`, as in trecs.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - src: packaging/trecs-notes.desktop
+        dst: trecs-notes.desktop
+      - src: cmd/trecs-notes/assets/icon.png
+        dst: trecs-notes.png
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+nfpms:
+  - id: packages
+    package_name: trecs-notes
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: https://github.com/solworktech/trecs-notes
+    description: |-
+      Save selected text from any application as a note.
+
+      Press a global hotkey (Ctrl+Alt+Space by default) and the text selected
+      in whatever window has focus is offered in a small form, together with
+      the application name and window title, and saved with your tags. Notes
+      are always kept locally; they can also be sent to a trecs server.
+    maintainer: Jesse Portnoy <jesse@solwork.io>
+    license: MIT
+    vendor: Solworktech
+    section: utils
+    bindir: /usr/bin
+
+    # Runtime libraries. The soname is what really matters (GTK 3 keeps its
+    # ABI for the whole 3.x series), but package NAMES differ per distribution
+    # and sometimes per release, so each format gets its own list:
+    #   deb  - libgtk-3-0 was renamed libgtk-3-0t64 in the 64-bit time_t
+    #          transition (Debian 13, Ubuntu 24.04); either satisfies it.
+    #   rpm  - requires the sonames themselves, which are the same on Fedora,
+    #          RHEL and its clones, openSUSE, ...
+    #   arch - package names.
+    # Needed to read the selection: one of xclip, xsel or wl-clipboard.
+    overrides:
+      deb:
+        dependencies:
+          - libgtk-3-0t64 | libgtk-3-0 (>= 3.22)
+          - libx11-6
+          - xclip | xsel | wl-clipboard
+        recommends:
+          - xdotool
+      rpm:
+        dependencies:
+          - libgtk-3.so.0()(64bit)
+          - libX11.so.6()(64bit)
+          - (xclip or xsel or wl-clipboard)
+        recommends:
+          - xdotool
+      archlinux:
+        dependencies:
+          - gtk3
+          - libx11
+          - xclip
+        recommends:
+          - xdotool
+
+    contents:
+      - src: packaging/trecs-notes.desktop
+        dst: /usr/share/applications/trecs-notes.desktop
+        file_info:
+          mode: 0644
+      - src: cmd/trecs-notes/assets/icon.png
+        dst: /usr/share/icons/hicolor/128x128/apps/trecs-notes.png
+        file_info:
+          mode: 0644
+      - src: cmd/trecs-notes/assets/icon.svg
+        dst: /usr/share/icons/hicolor/scalable/apps/trecs-notes.svg
+        file_info:
+          mode: 0644
+      - src: ./LICENSE
+        dst: /usr/share/doc/{{ .PackageName }}/copyright
+        file_info:
+          mode: 0644
+      - src: ./README.md
+        dst: /usr/share/doc/{{ .PackageName }}/README.md
+        file_info:
+          mode: 0644
+    formats:
+      - deb
+      - rpm
+      - archlinux
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
