@@ -1,0 +1,31 @@
+---
+filetype: df
+
+detect:
+  filename: "\\.df$"
+  header: "(^Filesystem[[:space:]]+)"
+
+rules:
+  # header
+  - cyan: "(Filesystem|Size|1K-blocks|(I)?Use(d)?(%)?|Avail(able)?|Mounted on|IFree|Inodes)"
+  - blue: "(\\/[-\\w\\d.]+)+\\s"
+  # Ks
+  - green: "\\s\\d*[.,]?\\d(K|B)i?\\s|\b\\d{1,3}\b"
+  # Ms
+  - magenta: "\\s\\d*[.,]?\\dMi?\\s|\b\\d{4,6}\b"
+  # Gs
+  - cyan: "\\s\\d*[.,]?\\dGi?\\s|\b\\d{4,6}\b"
+  # Ts
+  - preproc: "\\s\\d*[.,]?\\dTi?\\s|\b\\d{4,6}\b"
+  # Mounted on
+  - green: "\\/$|(\\/[-\\w\\d. ]+)+$"
+  # Use% <= 60
+  - high.green: "\\s[1-6]?[0-9]%\\s"
+  # Use% <= 70 - 89
+  - yellow: "\\s[78][0-9]%\\s"
+  # Use 90-97%
+  - red: "\\s9[0-7]%\\s"
+  # Use 98-100%
+  - preproc: "\\s9[89]%|100%\\s"
+  - type: "(tmpfs|(u|/)?dev|(/)?run|shm|(/)?boot|nfs|/home|/var|/tmp|swap)"
+  - constant.number: "[[:space:]]+([0-9])+[[:space:]]+"

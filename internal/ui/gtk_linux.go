@@ -19,6 +19,8 @@ func runGTK(in Input) (Result, error) {
 	defer C.free(unsafe.Pointer(title))
 	defer C.free(unsafe.Pointer(text))
 
+	renderTitleHint = in.Snapshot.WindowTitle
+
 	n := len(in.TagSuggestions)
 	ptrs := C.malloc(C.size_t(n+1) * C.size_t(unsafe.Sizeof(uintptr(0))))
 	defer C.free(ptrs)

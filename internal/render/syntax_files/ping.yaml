@@ -1,0 +1,28 @@
+---
+filetype: ping
+
+detect:
+  filename: "\\.ping$"
+  header: "(^PING[[:space:]]+[\\S+])"
+
+rules:
+  # IP
+  - blue: "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+  # IP v6
+  - blue: "(([0-9a-fA-F]{1,4})?\\:\\:?[0-9a-fA-F]{1,4})+"
+  # seq
+  - green: "icmp_seq=(\\d+)"
+  # ttl
+  - cyan: "ttl=(\\d+)"
+  # host
+  - yellow: "(?:[fF]rom|PING)\\s(\\S+)\\s"
+  - yellow: "--- (\\S+) ping statistics ---"
+  - cyan: "\\s([0-9\\.]+)\\/([0-9\\.]+)\\/([0-9\\.]+)\\/([0-9\\.]+) ms"
+  - cyan: "(min/avg/max/mdev)"
+  # ttl
+  - red: "time=([0-9\\.]+)\\s?ms"
+  # errors
+  - red: "DUP\\!"
+  - red: "(Destination Host Unreachable|100(\\.0)?% packet loss)"
+  - red: ".+unknown\\shost\\s(.+)"
+  - red: "Temporary failure in name resolution"

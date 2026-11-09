@@ -59,6 +59,14 @@ The tray icon uses the StatusNotifier (AppIndicator) protocol. KDE, XFCE, Cinnam
 
 The tray menu has **Settings**, **Browse notes** (not built yet) and **Quit**. Quitting also closes an open form.
 
+### Raw and Markdown
+
+The note area has two tabs. **Raw** is the text you edit; it is coloured as you type, using the [gohighlight](https://github.com/jessp01/gohighlight) syntax definitions. The language is guessed from the window title (`main.go - editor`), a `#!` line or the content, and the **Syntax** button at the right of the tabs shows the guess ("Auto (go)"). If the note starts with a code fence (` ```go `), that language is selected. Click the box to search the list and pick another language, or *None*, to override it. **Markdown** shows the same text rendered: headings, bold, italic, strikethrough, inline code, links, quotes, lists, task lists, tables and fenced code blocks (coloured by their language tag).
+
+The text is saved exactly as written; the tabs only change how it is displayed. The tabs are available in the GTK form on Linux. The macOS, Windows and `yad`/`zenity` forms still show a plain text box.
+
+The syntax definitions in `internal/render/syntax_files` are a copy of gohighlight's; see the README there for how to update them.
+
 Tags are lowercase letters, digits and single hyphens, 2 to 32 characters, at most 10 per note - the same rule `trecs` uses for recordings.
 
 ## Settings

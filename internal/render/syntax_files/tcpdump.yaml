@@ -1,0 +1,16 @@
+---
+filetype: tcpdump
+
+detect:
+  filename: "\\.tcpdump$"
+
+rules:
+  - yellow: "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.([0-9]+|[a-z]+)"
+  - constant.number: "(\\[[^]]+\\])"
+  - preproc: "([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})"
+  - cyan: "^(\\d+):(\\d+):(\\d+)"
+  - red: "(\\s+\\d+)/(\\w+).*"
+  - magenta: "options\\s\\[.*\\].*"
+  - magenta: "\\s+([a-zA-Z-]+)$"
+  - comment: "\\s(seq|ack|win|IP)\\s"
+  - yellow: "\\s+([a-z-]+\\.)?[a-z-]+\\.[a-z-]+\\.[a-z-]+"

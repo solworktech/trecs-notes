@@ -33,5 +33,9 @@ int trecs_settings(const settings_in *in, settings_out *out);
 
 // Implemented in Go (gtk_linux.go): the settings window's buttons call it.
 // Returns a malloc'd "message \x1f login status \x1f unsynced \x1f ok(0/1)".
+// Implemented in Go (gtk_render_linux.go): text for the note area, as styled
+// runs or colour spans (see internal/render). Returns a malloc'd string.
+extern char *goRender(int op, char *a, char *b);
+
 extern char *goSettingsAction(int action, char *a1, char *a2, char *a3);
 #endif

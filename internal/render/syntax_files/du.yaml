@@ -1,0 +1,22 @@
+---
+filetype: du
+
+detect:
+  filename: "\\.du$"
+
+rules:
+  - blue: "\\s+[\\.\\/]+([\\w\\s\\-\\_\\.]+)(\\/.*)?$"
+  # Ks
+  - green: "^\\d{1,3}\\s"
+  - green: "^ ?\\d*[.,]?\\dKi?\\s"
+  # Ms
+  - magenta: "\\d{4,6}\\s"
+  - magenta: "^ ?\\d*[.,]?\\dMi?\\s"
+  # Gs
+  - cyan: "^\\d{7,9}\\s"
+  - cyan: "^ ?\\d*[.,]?\\dGi?\\s"
+  # Ts
+  - preproc: "^\\d{10,12}\\s"
+  - preproc: "^ ?\\d*[.,]?\\dTi?\\s"
+  # total
+  - yellow: "(.*)\\s+(total)$"

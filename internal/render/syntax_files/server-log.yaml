@@ -1,0 +1,15 @@
+---
+filetype: serverlog
+
+detect:
+  filename: "(\\.log.*)"
+
+rules:
+  - constant.number: "(\\[[^]]+\\])"
+  - preproc: "([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})"
+  - preproc: "\\\\."
+  - preproc: "(\\[(error|warning|info|warn)\\])"
+  - constant.specialChar: "((GET|POST|HEAD)\\ [^\\ ]+)"
+  - comment: "(referer\\: .*)"
+  - statement: "[[:space:]]([0-9~:.]{2,}[-+:.0-9a-z~]+)[[:space:]]"
+  - type: "(Mozilla|Chrome|Safari|Firefox|AppleWebKit|Linux x86_64|Gecko|Windows|Mac)"

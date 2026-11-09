@@ -1,0 +1,24 @@
+---
+filetype: route
+
+detect:
+  filename: "\\.route$"
+  header: ".*routing table"
+
+rules:
+  # header
+  - magenta: "Kernel IP routing table"
+  - cyan: "Destination\\s+Gateway\\s+Genmask\\s+Flags\\s+Metric\\s+Ref\\s+Use\\s+Iface"
+  # numbers
+  - green: "[\\d+]"
+  # IP
+  - yellow: "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+  # interface
+  - red: "\\s([a-z-]+\\d+)"
+  # hostname
+  - blue: "\\s+([a-z-]+\\.)?[a-z-]+\\.[a-z-]+\\.[a-z-]+"
+  - high.green: "ip-\\d+-\\d+-\\d+-\\d+"
+  # flags
+  - magenta: "U(G|H|\\s)"
+  # keywords
+  - red: "(default|link-local)"

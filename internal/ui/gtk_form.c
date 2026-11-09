@@ -1,6 +1,7 @@
 //go:build linux && !nogtk
 
 #include "gtk_linux.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,342 @@ void trecs_apply_header(GtkWidget *dlg, const char *title, const unsigned char *
 		g_object_unref(ld);
 	}
 	gtk_window_set_titlebar(GTK_WINDOW(dlg), hb);
+}
+
+
+// ---- the note area: a Raw tab (editable, with syntax colours) and a Markdown
+// tab (rendered preview). Both are fed by Go (goRender, internal/render).
+
+enum { OP_HIGHLIGHT = 1, OP_MARKDOWN = 2, OP_SYNTAXES = 3, OP_FENCE_HINT = 4 };
+enum { NCOLORS = 10 };
+enum { F_BOLD = 1, F_ITALIC = 2, F_STRIKE = 4, F_CODE = 8, F_LINK = 16, F_QUOTE = 32,
+       F_CODEBLOCK = 64, F_H1 = 128, F_H2 = 256, F_H3 = 512, COLOR_SHIFT = 12 };
+
+// mid-tones that read on both light and dark themes; index = render.Color
+static const char *color_hex[NCOLORS] = {
+	NULL, "#7d8b99", "#3f9142", "#00838f", "#a64ca6", "#c08a00", "#3b78c4", "#d1423f", "#d9731a", "#8a8f98",
+};
+
+typedef struct {
+	GtkWidget *raw, *preview, *notebook, *dlg;
+	GtkWidget *syn_button, *syn_popover, *syn_search, *syn_list;
+	guint timer;
+	int syntaxes_loaded, hint_done;
+	char *choice;      // "" = auto, "none", or a language name
+	char *auto_name;   // what auto resolved to last time
+} note_ctx;
+
+static void add_color_tags(GtkTextBuffer *b) {
+	char name[8];
+	for (int i = 1; i < NCOLORS; i++) {
+		GdkRGBA c;
+		gdk_rgba_parse(&c, color_hex[i]);
+		snprintf(name, sizeof name, "c%d", i);
+		GtkTextTag *t = gtk_text_buffer_create_tag(b, name, "foreground-rgba", &c, NULL);
+		if (i == 1) g_object_set(t, "style", PANGO_STYLE_ITALIC, NULL);
+	}
+}
+
+static void add_preview_tags(GtkTextBuffer *b) {
+	GdkRGBA shade, gray, blue;
+	gdk_rgba_parse(&shade, "rgba(127,127,127,0.20)");
+	gdk_rgba_parse(&gray, "#7d8b99");
+	gdk_rgba_parse(&blue, "#3b78c4");
+	gtk_text_buffer_create_tag(b, "bold", "weight", PANGO_WEIGHT_BOLD, NULL);
+	gtk_text_buffer_create_tag(b, "italic", "style", PANGO_STYLE_ITALIC, NULL);
+	gtk_text_buffer_create_tag(b, "strike", "strikethrough", TRUE, NULL);
+	gtk_text_buffer_create_tag(b, "code", "family", "monospace", "background-rgba", &shade, NULL);
+	gtk_text_buffer_create_tag(b, "link", "foreground-rgba", &blue, "underline", PANGO_UNDERLINE_SINGLE, NULL);
+	gtk_text_buffer_create_tag(b, "quote", "left-margin", 16, "foreground-rgba", &gray, "style", PANGO_STYLE_ITALIC, NULL);
+	gtk_text_buffer_create_tag(b, "codeblock", "paragraph-background-rgba", &shade, "left-margin", 8, "right-margin", 8, NULL);
+	gtk_text_buffer_create_tag(b, "h1", "weight", PANGO_WEIGHT_BOLD, "scale", 1.6, NULL);
+	gtk_text_buffer_create_tag(b, "h2", "weight", PANGO_WEIGHT_BOLD, "scale", 1.35, NULL);
+	gtk_text_buffer_create_tag(b, "h3", "weight", PANGO_WEIGHT_BOLD, "scale", 1.15, NULL);
+	add_color_tags(b);
+}
+
+static char *render(int op, const char *a, const char *b) {
+	return goRender(op, (char *)a, (char *)b);
+}
+
+static char *current_text(GtkTextBuffer *b) {
+	GtkTextIter s, e;
+	gtk_text_buffer_get_bounds(b, &s, &e);
+	return gtk_text_buffer_get_text(b, &s, &e, FALSE);
+}
+
+static void update_syntax_label(note_ctx *c) {
+	char *label;
+	if (c->choice[0] == 0)
+		label = c->auto_name && c->auto_name[0] ? g_strdup_printf("Auto (%s)", c->auto_name) : g_strdup("Auto");
+	else if (strcmp(c->choice, "none") == 0)
+		label = g_strdup("None");
+	else
+		label = g_strdup(c->choice);
+	gtk_button_set_label(GTK_BUTTON(c->syn_button), label);
+	g_free(label);
+}
+
+static void schedule_highlight(note_ctx *c, guint ms);
+
+static void choose_syntax(note_ctx *c, const char *value) {
+	g_free(c->choice);
+	c->choice = g_strdup(value);
+	update_syntax_label(c);
+	schedule_highlight(c, 10);
+}
+
+static void add_syntax_row(note_ctx *c, const char *label, const char *value) {
+	GtkWidget *row = gtk_list_box_row_new();
+	GtkWidget *l = gtk_label_new(label);
+	gtk_widget_set_halign(l, GTK_ALIGN_START);
+	gtk_widget_set_margin_start(l, 6);
+	gtk_widget_set_margin_end(l, 6);
+	gtk_widget_set_margin_top(l, 3);
+	gtk_widget_set_margin_bottom(l, 3);
+	gtk_container_add(GTK_CONTAINER(row), l);
+	g_object_set_data_full(G_OBJECT(row), "value", g_strdup(value), g_free);
+	g_object_set_data_full(G_OBJECT(row), "label", g_utf8_strdown(label, -1), g_free);
+	gtk_container_add(GTK_CONTAINER(c->syn_list), row);
+}
+
+static void load_syntaxes(note_ctx *c) {
+	if (c->syntaxes_loaded) return;
+	c->syntaxes_loaded = 1;
+	char *list = render(OP_SYNTAXES, "", "");
+	add_syntax_row(c, "Auto", "");
+	add_syntax_row(c, "None", "none");
+	gchar **names = g_strsplit(list, "\x1f", -1);
+	for (int i = 0; names[i] != NULL; i++)
+		if (names[i][0]) add_syntax_row(c, names[i], names[i]);
+	g_strfreev(names);
+	free(list);
+	gtk_widget_show_all(c->syn_list);
+}
+
+static gboolean syntax_filter(GtkListBoxRow *row, gpointer d) {
+	note_ctx *c = d;
+	const char *q = gtk_entry_get_text(GTK_ENTRY(c->syn_search));
+	if (q[0] == 0) return TRUE;
+	char *lq = g_utf8_strdown(q, -1);
+	gboolean hit = strstr((const char *)g_object_get_data(G_OBJECT(row), "label"), lq) != NULL;
+	g_free(lq);
+	return hit;
+}
+
+static void on_syntax_search(GtkSearchEntry *e, gpointer d) {
+	note_ctx *c = d;
+	gtk_list_box_invalidate_filter(GTK_LIST_BOX(c->syn_list));
+}
+
+static void on_syntax_row(GtkListBox *box, GtkListBoxRow *row, gpointer d) {
+	note_ctx *c = d;
+	gtk_popover_popdown(GTK_POPOVER(c->syn_popover));
+	choose_syntax(c, (const char *)g_object_get_data(G_OBJECT(row), "value"));
+}
+
+// Enter in the search box takes the first match
+static void on_syntax_enter(GtkEntry *e, gpointer d) {
+	note_ctx *c = d;
+	for (int i = 0;; i++) {
+		GtkListBoxRow *row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(c->syn_list), i);
+		if (row == NULL) return;
+		if (gtk_widget_get_child_visible(GTK_WIDGET(row))) {
+			on_syntax_row(GTK_LIST_BOX(c->syn_list), row, c);
+			return;
+		}
+	}
+}
+
+static void on_syntax_popup(GtkWidget *w, gpointer d) {
+	note_ctx *c = d;
+	load_syntaxes(c);
+	gtk_entry_set_text(GTK_ENTRY(c->syn_search), "");
+	gtk_widget_grab_focus(c->syn_search);
+}
+
+static void highlight_raw(note_ctx *c) {
+	GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
+	char *text = current_text(b);
+	char *reply = render(OP_HIGHLIGHT, text, c->choice);
+	GtkTextIter s, e;
+	char name[8];
+
+	gtk_text_buffer_get_bounds(b, &s, &e);
+	for (int i = 1; i < NCOLORS; i++) {
+		snprintf(name, sizeof name, "c%d", i);
+		gtk_text_buffer_remove_tag_by_name(b, name, &s, &e);
+	}
+	// reply: resolved language, a record separator, then "start:end:color;..."
+	char *sep = strchr(reply, '\x1e');
+	if (sep != NULL) {
+		*sep = 0;
+		if (c->choice[0] == 0) {
+			g_free(c->auto_name);
+			c->auto_name = g_strdup(reply);
+			update_syntax_label(c);
+		}
+		gchar **spans = g_strsplit(sep + 1, ";", -1);
+		for (int i = 0; spans[i] != NULL; i++) {
+			int st, en, col;
+			if (sscanf(spans[i], "%d:%d:%d", &st, &en, &col) != 3 || col < 1 || col >= NCOLORS) continue;
+			GtkTextIter is, ie;
+			gtk_text_buffer_get_iter_at_offset(b, &is, st);
+			gtk_text_buffer_get_iter_at_offset(b, &ie, en);
+			snprintf(name, sizeof name, "c%d", col);
+			gtk_text_buffer_apply_tag_by_name(b, name, &is, &ie);
+		}
+		g_strfreev(spans);
+	}
+	g_free(text); free(reply);
+}
+
+static gboolean highlight_timeout(gpointer d) {
+	note_ctx *c = d;
+	c->timer = 0;
+	if (!c->hint_done) {
+		c->hint_done = 1;
+		// first run: a fence on the first line ("```go") names the language
+		GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
+		char *text = current_text(b);
+		char *hint = render(OP_FENCE_HINT, text, "");
+		if (hint[0]) {
+			g_free(c->choice);
+			c->choice = g_strdup(hint);
+			update_syntax_label(c);
+		}
+		g_free(text); free(hint);
+	}
+	highlight_raw(c);
+	return G_SOURCE_REMOVE;
+}
+
+static void schedule_highlight(note_ctx *c, guint ms) {
+	if (c->timer) g_source_remove(c->timer);
+	c->timer = g_timeout_add(ms, highlight_timeout, c);
+}
+
+static void on_raw_changed(GtkTextBuffer *b, gpointer d) { schedule_highlight(d, 200); }
+
+static void add_flag_tag(GtkTextBuffer *b, const char *tag, int from, int to) {
+	GtkTextIter s, e;
+	gtk_text_buffer_get_iter_at_offset(b, &s, from);
+	gtk_text_buffer_get_iter_at_offset(b, &e, to);
+	gtk_text_buffer_apply_tag_by_name(b, tag, &s, &e);
+}
+
+static void render_preview(note_ctx *c) {
+	GtkTextBuffer *src = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
+	GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->preview));
+	char *text = current_text(src);
+	char *reply = render(OP_MARKDOWN, text, "");
+	gtk_text_buffer_set_text(b, "", -1);
+
+	gchar **runs = g_strsplit(reply, "\x1e", -1);
+	for (int i = 0; runs[i] != NULL; i++) {
+		char *sep = strchr(runs[i], '\x1f');
+		if (sep == NULL) continue;
+		*sep = 0;
+		int bits = atoi(runs[i]);
+		const char *chunk = sep + 1;
+		int from = gtk_text_buffer_get_char_count(b);
+		GtkTextIter end;
+		gtk_text_buffer_get_end_iter(b, &end);
+		gtk_text_buffer_insert(b, &end, chunk, -1);
+		int to = gtk_text_buffer_get_char_count(b);
+		if (bits & F_BOLD) add_flag_tag(b, "bold", from, to);
+		if (bits & F_ITALIC) add_flag_tag(b, "italic", from, to);
+		if (bits & F_STRIKE) add_flag_tag(b, "strike", from, to);
+		if (bits & F_CODE) add_flag_tag(b, "code", from, to);
+		if (bits & F_LINK) add_flag_tag(b, "link", from, to);
+		if (bits & F_QUOTE) add_flag_tag(b, "quote", from, to);
+		if (bits & F_CODEBLOCK) add_flag_tag(b, "codeblock", from, to);
+		if (bits & F_H1) add_flag_tag(b, "h1", from, to);
+		if (bits & F_H2) add_flag_tag(b, "h2", from, to);
+		if (bits & F_H3) add_flag_tag(b, "h3", from, to);
+		int col = bits >> COLOR_SHIFT;
+		if (col >= 1 && col < NCOLORS) {
+			char name[8];
+			snprintf(name, sizeof name, "c%d", col);
+			add_flag_tag(b, name, from, to);
+		}
+	}
+	g_strfreev(runs);
+	g_free(text); free(reply);
+}
+
+static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer d) {
+	note_ctx *c = d;
+	if (num == 1) {
+		render_preview(c);
+	} else {
+		gtk_widget_grab_focus(c->raw);
+	}
+}
+
+static GtkWidget *scrolled(GtkWidget *child) {
+	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), GTK_SHADOW_IN);
+	gtk_container_add(GTK_CONTAINER(sw), child);
+	gtk_widget_set_vexpand(sw, TRUE);
+	return sw;
+}
+
+// builds the Raw / Markdown notebook; *raw_out is the editable view
+static GtkWidget *note_area(note_ctx *c, const char *text) {
+	c->raw = gtk_text_view_new();
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(c->raw), GTK_WRAP_WORD_CHAR);
+	gtk_text_view_set_monospace(GTK_TEXT_VIEW(c->raw), TRUE);
+	GtkTextBuffer *rb = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
+	add_color_tags(rb);
+	gtk_text_buffer_set_text(rb, text, -1);
+
+	c->preview = gtk_text_view_new();
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(c->preview), GTK_WRAP_WORD_CHAR);
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(c->preview), FALSE);
+	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(c->preview), FALSE);
+	gtk_text_view_set_left_margin(GTK_TEXT_VIEW(c->preview), 6);
+	gtk_text_view_set_right_margin(GTK_TEXT_VIEW(c->preview), 6);
+	add_preview_tags(gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->preview)));
+
+	c->notebook = gtk_notebook_new();
+	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), scrolled(c->raw), gtk_label_new("Raw"));
+	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), scrolled(c->preview), gtk_label_new("Markdown"));
+	gtk_widget_set_vexpand(c->notebook, TRUE);
+
+	// the syntax chooser sits at the right end of the tab row: a button that
+	// opens a popover with a search box over a scrolling list
+	c->choice = g_strdup("");
+	c->syn_button = gtk_menu_button_new();
+	gtk_button_set_label(GTK_BUTTON(c->syn_button), "Auto");
+	gtk_widget_set_tooltip_text(c->syn_button, "Syntax colours for the Raw tab");
+	c->syn_popover = gtk_popover_new(c->syn_button);
+	GtkWidget *pbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+	gtk_container_set_border_width(GTK_CONTAINER(pbox), 6);
+	c->syn_search = gtk_search_entry_new();
+	c->syn_list = gtk_list_box_new();
+	gtk_list_box_set_filter_func(GTK_LIST_BOX(c->syn_list), syntax_filter, c, NULL);
+	GtkWidget *lsw = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(lsw), 260);
+	gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(lsw), TRUE);
+	gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(lsw), 220);
+	gtk_container_add(GTK_CONTAINER(lsw), c->syn_list);
+	gtk_box_pack_start(GTK_BOX(pbox), c->syn_search, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(pbox), lsw, TRUE, TRUE, 0);
+	gtk_widget_show_all(pbox);
+	gtk_container_add(GTK_CONTAINER(c->syn_popover), pbox);
+	gtk_menu_button_set_popover(GTK_MENU_BUTTON(c->syn_button), c->syn_popover);
+	gtk_widget_show(c->syn_button);
+	gtk_notebook_set_action_widget(GTK_NOTEBOOK(c->notebook), c->syn_button, GTK_PACK_END);
+
+	g_signal_connect(c->syn_search, "search-changed", G_CALLBACK(on_syntax_search), c);
+	g_signal_connect(c->syn_search, "activate", G_CALLBACK(on_syntax_enter), c);
+	g_signal_connect(c->syn_list, "row-activated", G_CALLBACK(on_syntax_row), c);
+	g_signal_connect(c->syn_popover, "show", G_CALLBACK(on_syntax_popup), c);
+	g_signal_connect(rb, "changed", G_CALLBACK(on_raw_changed), c);
+	g_signal_connect(c->notebook, "switch-page", G_CALLBACK(on_switch_page), c);
+	schedule_highlight(c, 30); // after the window is up: loading the lexers takes a moment
+	return c->notebook;
 }
 
 static GtkWidget *add_row(GtkWidget *grid, int row, const char *label, GtkWidget *w, int top) {
@@ -115,15 +452,10 @@ int trecs_form(const char *app, const char *title, const char *text,
 		gtk_entry_set_completion(GTK_ENTRY(e_tags), comp);
 	}
 
-	GtkWidget *tv = gtk_text_view_new();
-	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(tv), GTK_WRAP_WORD_CHAR);
-	gtk_text_view_set_monospace(GTK_TEXT_VIEW(tv), TRUE);
-	gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(tv)), text, -1);
-	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
-	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), GTK_SHADOW_IN);
-	gtk_container_add(GTK_CONTAINER(sw), tv);
-	gtk_widget_set_vexpand(sw, TRUE);
-	add_row(grid, 3, "Note", sw, 1);
+	note_ctx ctx;
+	memset(&ctx, 0, sizeof ctx);
+	ctx.dlg = dlg;
+	add_row(grid, 3, "Note", note_area(&ctx, text), 1);
 
 	gtk_widget_show_all(dlg);
 	gtk_widget_grab_focus(e_tags);
@@ -133,13 +465,16 @@ int trecs_form(const char *app, const char *title, const char *text,
 	int saved = resp == GTK_RESPONSE_ACCEPT;
 	if (saved) {
 		GtkTextIter s, e;
-		GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(tv));
+		GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(ctx.raw));
 		gtk_text_buffer_get_bounds(b, &s, &e);
 		*o_app = g_strdup(gtk_entry_get_text(GTK_ENTRY(e_app)));
 		*o_title = g_strdup(gtk_entry_get_text(GTK_ENTRY(e_title)));
 		*o_tags = g_strdup(gtk_entry_get_text(GTK_ENTRY(e_tags)));
 		*o_text = gtk_text_buffer_get_text(b, &s, &e, FALSE);
 	}
+	if (ctx.timer) g_source_remove(ctx.timer);
+	g_free(ctx.choice);
+	g_free(ctx.auto_name);
 	gtk_widget_destroy(dlg);
 	while (gtk_events_pending()) gtk_main_iteration();
 	return saved;

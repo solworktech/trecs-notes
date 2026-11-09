@@ -1,0 +1,6 @@
+---
+extends: default
+
+rules:
+  # Lexer rules are single regular expressions; wrapping one would change it.
+  line-length: disable

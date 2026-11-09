@@ -1,0 +1,23 @@
+---
+filetype: traceroute
+
+detect:
+  filename: "\\.traceroute$"
+  header: "(^traceroute to[[:space:]]+[\\S+])"
+
+rules:
+  # IP
+  - blue: "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+  # IP v6
+  - blue: "(([0-9a-fA-F]{1,4})?\\:\\:?[0-9a-fA-F]{1,4})+"
+  # host
+  - yellow: "\\s\\w+[\\w\\-\\.]+\\w+"
+  - cyan: "\\s([0-9\\.]+) ms"
+  # ttl
+  - green: "ttl=\\d+\\!"
+  # errors
+  - red: "DUP\\!"
+  - red: "(Destination Host Unreachable|100(\\.0)?% packet loss)"
+  - red: ".+unknown\\shost\\s(.+)"
+  - red: "Temporary failure in name resolution"
+  - red: "\\*"

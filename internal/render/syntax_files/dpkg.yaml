@@ -1,0 +1,19 @@
+---
+filetype: dpkg
+
+detect:
+  filename: "\\.dpkg$"
+  header: "(^(Desired=).*)"
+
+rules:
+  - constant.number: "(^[D|+].*)"
+  - preproc: "[0-9]+,?[0-9]*"
+  - preproc: "\\\\."
+  - preproc: "^(un.*)"
+  - constant: "^(ii.*)"
+  - comment: "^(rc.*)"
+  - type: "(i386|i486|i586|i686|amd64|\\<none\\>|athlon|ia64|alpha|alphaev5|alphaev56|alphapca56|alphaev6|alphaev67|sparc|sparcv9|sparc64armv3l|armv4b|armv4lm|ips|mipsel|ppc|iseries|ppcpseries|ppc64|m68k|m68kmint|Sgi|rs6000|i370|s390x|s390|noarch)"
+  - comment: "(^|[[:space:]])#([^{].*)?$"
+  - preproc: "[[:space:]]+$"
+  - indent-char: "\t+ +| +\t+"
+  - statement: "[[:space:]]([0-9~:.]{2,}[-+:.0-9a-z~]+)[[:space:]]"

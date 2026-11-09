@@ -1,0 +1,40 @@
+---
+filetype: nmap
+
+detect:
+  filename: "\\.nmap$"
+  header: "(^Starting Nmap)"
+
+rules:
+  # Scan Title
+  - cyan: "Nmap scan report for (\\S+)\\s\\(([^\\)]+)\\)"
+  # Up
+  - green: "Host is (up)"
+  # errors
+  - red: "Failed\\sto\\sresolve\\s\"(\\S+)\""
+  # IP
+  - yellow: "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+  # Ports
+  - green: "^(\\d+)"
+  - red: "/(\\w+)\\s+(\\w+)\\s+(\\S+)"
+  - magenta: "\\s+([a-zA-Z-]+)$"
+  # Titles
+  - cyan: "^(PORT.*$)|^(HOP.*)"
+  # Ports Details
+  - yellow: "^\\|_?(.*)"
+  # Trace
+  - cyan: "^\\d+\\s+(\\d+\\.\\d+\\sms)[^0-9]*(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+  # Network Distance:
+  - green: "Network Distance:\\s(\\d+)"
+  - green: "\\sopen\\s"
+  - yellow: "\\sfiltered\\s"
+  - red: "\\sclosed\\s"
+  - cyan: "\\sunfiltered\\s"
+  - yellow: "(Service Info|OS details|Device type|Running):\\s.*$"
+  # Closed ports
+  - red: "Not shown: (\\d+)\\s(closed|filtered)\\sports"
+  - constant.number: "(\\b[0-9.]+\\b|\\b0x[0-9A-Fa-f]+\\b)([ms|s|seconds])?(\\s+|$)"
+  - yellow: "\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}(:\\d{2})?"
+  - yellow: "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+  # hostname
+  - yellow: "\\s+([a-z-]+\\.)?[a-z-]+\\.[a-z-]+\\.[a-z-]+"
