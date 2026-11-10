@@ -15,6 +15,7 @@ import (
 var ErrNotFound = errors.New("note not found")
 
 const noteColumns = `n.id, n.app_name, n.window_title, n.body, n.created_at_epoch,
+	COALESCE(n.updated_at_epoch, n.created_at_epoch),
 	n.remote_id, n.remote_synced_at, n.remote_sync_error, n.dirty,
 	(SELECT group_concat(tag, char(31)) FROM (SELECT tag FROM note_tags WHERE note_id = n.id ORDER BY tag))`
 
@@ -22,15 +23,16 @@ type rowScanner interface{ Scan(...any) error }
 
 func scanNote(r rowScanner) (model.Note, error) {
 	var n model.Note
-	var created int64
+	var created, updated int64
 	var remoteID, syncErr, tags sql.NullString
 	var syncedAt sql.NullInt64
 	var dirty int
-	if err := r.Scan(&n.ID, &n.AppName, &n.WindowTitle, &n.Text, &created,
+	if err := r.Scan(&n.ID, &n.AppName, &n.WindowTitle, &n.Text, &created, &updated,
 		&remoteID, &syncedAt, &syncErr, &dirty, &tags); err != nil {
 		return n, err
 	}
 	n.CreatedAt = time.Unix(created, 0)
+	n.UpdatedAt = time.Unix(updated, 0)
 	n.RemoteID = remoteID.String
 	n.RemoteSyncError = syncErr.String
 	n.Dirty = dirty != 0

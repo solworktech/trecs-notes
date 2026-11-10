@@ -239,6 +239,7 @@ type NoteRequest struct {
 	Body        string   `json:"body"`
 	Tags        []string `json:"tags"`       // always present, [] when there are none
 	CreatedAt   int64    `json:"created_at"` // epoch seconds, same field the local DB uses
+	UpdatedAt   int64    `json:"updated_at"` // epoch seconds: when the note was last edited here
 }
 
 // NoteResponse is what the server returns.

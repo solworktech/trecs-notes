@@ -16,6 +16,7 @@ func (db *DB) Insert(n *model.Note) error {
 	if n.CreatedAt.IsZero() {
 		n.CreatedAt = time.Now()
 	}
+	n.UpdatedAt = n.CreatedAt
 	tx, err := db.sql.Begin()
 	if err != nil {
 		return err
@@ -23,8 +24,8 @@ func (db *DB) Insert(n *model.Note) error {
 	defer func() { _ = tx.Rollback() }() // no-op once committed
 
 	res, err := tx.Exec(
-		`INSERT INTO notes (app_name, window_title, body, created_at_epoch) VALUES (?, ?, ?, ?)`,
-		n.AppName, n.WindowTitle, n.Text, n.CreatedAt.Unix(),
+		`INSERT INTO notes (app_name, window_title, body, created_at_epoch, updated_at_epoch) VALUES (?, ?, ?, ?, ?)`,
+		n.AppName, n.WindowTitle, n.Text, n.CreatedAt.Unix(), n.CreatedAt.Unix(),
 	)
 	if err != nil {
 		return err
@@ -193,7 +194,7 @@ func (db *DB) Unsynced(limit int) ([]model.Note, error) {
 		limit = 100
 	}
 	rows, err := db.sql.Query(
-		`SELECT id, app_name, window_title, body, created_at_epoch FROM notes
+		`SELECT id, app_name, window_title, body, created_at_epoch, COALESCE(updated_at_epoch, created_at_epoch) FROM notes
 		 WHERE remote_id IS NULL ORDER BY created_at_epoch ASC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -202,11 +203,12 @@ func (db *DB) Unsynced(limit int) ([]model.Note, error) {
 	var notes []model.Note
 	for rows.Next() {
 		var n model.Note
-		var created int64
-		if err := rows.Scan(&n.ID, &n.AppName, &n.WindowTitle, &n.Text, &created); err != nil {
+		var created, updated int64
+		if err := rows.Scan(&n.ID, &n.AppName, &n.WindowTitle, &n.Text, &created, &updated); err != nil {
 			return nil, err
 		}
 		n.CreatedAt = time.Unix(created, 0)
+		n.UpdatedAt = time.Unix(updated, 0)
 		tags, err := db.tagsFor(n.ID)
 		if err != nil {
 			return nil, err

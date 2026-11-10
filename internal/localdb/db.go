@@ -61,7 +61,7 @@ func (db *DB) Close() error {
 }
 
 // schemaVersion is bumped whenever migrate() gains a new step.
-const schemaVersion = 2
+const schemaVersion = 3
 
 // migrations[i] takes the schema from version i to i+1.
 var migrations = [][]string{
@@ -119,6 +119,12 @@ var migrations = [][]string{
 			VALUES (new.id, new.body, new.app_name, new.window_title);
 		END`,
 		`INSERT INTO notes_fts(notes_fts) VALUES ('rebuild')`,
+	},
+	// v3: updated_at_epoch (added empty in v2) is filled in for every
+	// note: the time it was saved, until it is edited. Code reads and
+	// writes it as always set, as the server's notes.updated_at is.
+	{
+		`UPDATE notes SET updated_at_epoch = created_at_epoch WHERE updated_at_epoch IS NULL`,
 	},
 }
 

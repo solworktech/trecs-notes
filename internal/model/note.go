@@ -30,6 +30,11 @@ type Note struct {
 	// person's locale is a presentation concern (internal/ui), not stored.
 	CreatedAt time.Time
 
+	// UpdatedAt is when the note was last edited here (the same as CreatedAt
+	// for a note nobody has edited). It is sent to the server, so that an
+	// edit keeps the time it was made even when it is synced later.
+	UpdatedAt time.Time
+
 	// RemoteID, RemoteSyncedAt and RemoteSyncError track the optional copy
 	// in the trecs DB (see internal/api). RemoteID is empty until a sync
 	// succeeds; RemoteSyncError holds the last failure's message so the
@@ -46,3 +51,11 @@ type Note struct {
 // CreatedAtEpoch is CreatedAt as Unix seconds, the form the local DB and the
 // trecs API both store.
 func (n Note) CreatedAtEpoch() int64 { return n.CreatedAt.Unix() }
+
+// UpdatedAtEpoch is UpdatedAt in epoch seconds; CreatedAt for a note with no edit time.
+func (n Note) UpdatedAtEpoch() int64 {
+	if n.UpdatedAt.IsZero() {
+		return n.CreatedAt.Unix()
+	}
+	return n.UpdatedAt.Unix()
+}

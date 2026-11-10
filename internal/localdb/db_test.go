@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/solworktech/trecs-notes/internal/model"
 )
@@ -158,5 +159,49 @@ func TestMigrateV1Database(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	if got := scanAll(t, db, Filter{Match: `"upgrade"`}); len(got) != 1 {
 		t.Fatalf("backfill: %d", len(got))
+	}
+}
+
+func TestUpdatedAtFollowsEdits(t *testing.T) {
+	db := openTest(t)
+	n := model.Note{Text: "one", CreatedAt: time.Unix(1700000000, 0)}
+	_ = db.Insert(&n)
+	got, err := db.Get(n.ID)
+	if err != nil || got.UpdatedAt.Unix() != 1700000000 {
+		t.Fatalf("a note nobody edited was last edited when saved: %+v %v", got.UpdatedAt, err)
+	}
+	got.Text = "one!"
+	if err := db.Update(got); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = db.Get(n.ID)
+	if got.UpdatedAt.Unix() <= 1700000000 || got.CreatedAt.Unix() != 1700000000 {
+		t.Fatalf("an edit is stamped now and keeps the capture time: created %v updated %v", got.CreatedAt, got.UpdatedAt)
+	}
+}
+
+func TestMigrateFillsUpdatedAt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := model.Note{Text: "old", CreatedAt: time.Unix(1700000000, 0)}
+	_ = db.Insert(&n)
+	for _, s := range []string{`UPDATE notes SET updated_at_epoch = NULL`, `UPDATE schema_version SET version = 2`} {
+		if _, err := db.sql.Exec(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = db.Close()
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var nulls int
+	_ = db.sql.QueryRow(`SELECT COUNT(*) FROM notes WHERE updated_at_epoch IS NULL`).Scan(&nulls)
+	if nulls != 0 {
+		t.Fatalf("%d notes have no edit time", nulls)
 	}
 }

@@ -39,7 +39,7 @@ func withClient(fn func(context.Context, *api.Client) error) error {
 func request(n model.Note) api.NoteRequest {
 	return api.NoteRequest{
 		AppName: n.AppName, WindowTitle: n.WindowTitle, Body: n.Text,
-		Tags: n.Tags, CreatedAt: n.CreatedAtEpoch(),
+		Tags: n.Tags, CreatedAt: n.CreatedAtEpoch(), UpdatedAt: n.UpdatedAtEpoch(),
 	}
 }
 
