@@ -15,15 +15,42 @@ import (
 	"github.com/solworktech/trecs-notes/internal/model"
 )
 
-// SyncNote sends one note and records the outcome on it, success or failure.
-// The note is sent to the server of the saved login: credentials never go
-// anywhere else. If the session is missing or has lapsed and a login is
-// stored (internal/credentials), it logs in again once and retries.
-func SyncNote(db *localdb.DB, n model.Note) error {
-	id, err := send(n)
-	if errors.Is(err, api.ErrNotLoggedIn) && relogin() == nil {
-		id, err = send(n)
+// withClient runs fn with a client for the saved login. If the session is
+// missing or has lapsed and a login is stored (internal/credentials), it
+// logs in again once and retries. Credentials only ever go to the server of
+// the saved login.
+func withClient(fn func(context.Context, *api.Client) error) error {
+	run := func() error {
+		sess, err := api.LoadSession()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return fn(ctx, api.FromSession(sess))
 	}
+	err := run()
+	if errors.Is(err, api.ErrNotLoggedIn) && relogin() == nil {
+		err = run()
+	}
+	return err
+}
+
+func request(n model.Note) api.NoteRequest {
+	return api.NoteRequest{
+		AppName: n.AppName, WindowTitle: n.WindowTitle, Body: n.Text,
+		Tags: n.Tags, CreatedAt: n.CreatedAtEpoch(),
+	}
+}
+
+// SyncNote sends a note the server does not have yet and records the
+// outcome on it, success or failure.
+func SyncNote(db *localdb.DB, n model.Note) error {
+	var id string
+	err := withClient(func(ctx context.Context, c *api.Client) (err error) {
+		id, err = c.CreateNote(ctx, request(n))
+		return err
+	})
 	if err != nil {
 		_ = db.SetRemoteSync(n.ID, "", err.Error())
 		return err
@@ -31,17 +58,42 @@ func SyncNote(db *localdb.DB, n model.Note) error {
 	return db.SetRemoteSync(n.ID, id, "")
 }
 
-func send(n model.Note) (string, error) {
-	sess, err := api.LoadSession()
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	return api.FromSession(sess).CreateNote(ctx, api.NoteRequest{
-		AppName: n.AppName, WindowTitle: n.WindowTitle, Body: n.Text,
-		Tags: n.Tags, CreatedAt: n.CreatedAtEpoch(),
+// SyncEdit sends an edited note to the server. If the server has lost it,
+// the note is sent again as a new one.
+func SyncEdit(db *localdb.DB, n model.Note) error {
+	err := withClient(func(ctx context.Context, c *api.Client) error {
+		return c.UpdateNote(ctx, n.RemoteID, request(n))
 	})
+	if errors.Is(err, api.ErrRemoteGone) {
+		if e := db.ForgetRemote(n.ID); e != nil {
+			return e
+		}
+		n.RemoteID = ""
+		return SyncNote(db, n)
+	}
+	if err != nil {
+		_ = db.SetRemoteSync(n.ID, n.RemoteID, err.Error())
+		return err
+	}
+	return db.SetRemoteSync(n.ID, n.RemoteID, "")
+}
+
+// SyncDelete tells the server a note was deleted here, then forgets the
+// tombstone.
+func SyncDelete(db *localdb.DB, remoteID string) error {
+	err := withClient(func(ctx context.Context, c *api.Client) error {
+		return c.DeleteNote(ctx, remoteID)
+	})
+	if err != nil {
+		return err
+	}
+	return db.ClearTombstone(remoteID)
+}
+
+// SyncPending sends everything the server has not seen, in the background
+// where a frontend wants that: edits and deletions as well as new notes.
+func SyncPending(db *localdb.DB) {
+	_, _, _ = SendUnsynced(db, 100)
 }
 
 // relogin renews the session from the stored login.
@@ -59,25 +111,51 @@ func relogin() error {
 	return sess.Save()
 }
 
-// SendUnsynced sends every note the server does not have yet (oldest first,
-// up to limit) and says how many went and how many did not. It stops at the
-// first "not logged in", since the rest would fail the same way.
+// SendUnsynced sends every change the server has not seen - new notes
+// (oldest first), edits and deletions, up to limit of each - and says how
+// many went and how many did not. It stops at the first "not logged in",
+// since the rest would fail the same way.
 func SendUnsynced(db *localdb.DB, limit int) (sent, failed int, lastErr error) {
-	notes, err := db.Unsynced(limit)
+	fresh, err := db.Unsynced(limit)
 	if err != nil {
 		return 0, 0, err
 	}
-	for _, n := range notes {
-		if err := SyncNote(db, n); err != nil {
+	edited, err := db.Dirty(limit)
+	if err != nil {
+		return 0, 0, err
+	}
+	gone, err := db.Tombstones()
+	if err != nil {
+		return 0, 0, err
+	}
+	total := len(fresh) + len(edited) + len(gone)
+	do := func(f func() error) (stop bool) {
+		if err := f(); err != nil {
 			failed++
 			lastErr = err
 			if errors.Is(err, api.ErrNotLoggedIn) {
-				failed = len(notes) - sent
-				break
+				failed = total - sent
+				return true
 			}
-			continue
+			return false
 		}
 		sent++
+		return false
+	}
+	for _, n := range fresh {
+		if do(func() error { return SyncNote(db, n) }) {
+			return sent, failed, lastErr
+		}
+	}
+	for _, n := range edited {
+		if do(func() error { return SyncEdit(db, n) }) {
+			return sent, failed, lastErr
+		}
+	}
+	for _, id := range gone {
+		if do(func() error { return SyncDelete(db, id) }) {
+			return sent, failed, lastErr
+		}
 	}
 	return sent, failed, lastErr
 }

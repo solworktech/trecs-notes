@@ -12,6 +12,7 @@ It is the companion to [`trecs`](https://github.com/solworktech/trecs), which re
 - [Install](#install)
 - [Using it](#using-it)
 - [Settings](#settings)
+- [Terminal interface](#terminal-interface)
 - [Syncing to a Trecs server](#syncing-to-a-trecs-server)
 - [Where things are stored](#where-things-are-stored)
 - [Platform status](#platform-status)
@@ -61,7 +62,7 @@ The tray icon uses the StatusNotifier (AppIndicator) protocol. KDE, XFCE, Cinnam
 
 A second hotkey (`Ctrl+Alt+Shift+Space` by default) stores the selected text at once: no form, so no tags. It uses the same capture as the first hotkey. If no text is selected, nothing happens and nothing is stored. Set it in **Settings** (**Quick save**); press Backspace in that box to turn it off. Without a global hotkey (Wayland), bind `trecs-notes quick` instead. Quick saves are synced like any other note when syncing is on.
 
-The tray menu has **Settings**, **Browse notes** (not built yet) and **Quit**. Quitting also closes an open form.
+The tray menu has **Settings**, **Browse notes** and **Quit**. Quitting also closes an open form.
 
 ### Raw and Markdown
 
@@ -90,13 +91,31 @@ Tags are lowercase letters, digits and single hyphens, 2 to 32 characters, at mo
 
 The Settings window exists on Linux for now. On the other platforms, **Settings** opens the folder holding `config.json`, which you can edit.
 
+### Browsing your notes
+
+**Browse notes** in the tray menu (or `trecs-notes browse`) opens a window with a search box, the list of notes (newest first) and, beside it, the selected note, which you edit in place: App, Title, Tags and the text, with the same Raw and Markdown tabs as the capture form. **Save** (Ctrl+S) stores the changes, **Revert** drops them, **Delete** removes the note after asking, and changing to another note with unsaved changes asks what to do with them. The list follows the database, so notes saved by the hotkey while the window is open appear in it.
+
+Searching is as you type; the rules are the same as in the terminal interface (below): whole words, `"a phrase"`, `tag:`, `app:`, `since:`, `until:`, and the **Regex** and **Match case** boxes. Ctrl+F goes to the search box.
+
+## Terminal interface
+
+`trecs-notes` has two frontends over the same code. With no arguments it opens the graphical app (tray icon, hotkeys, windows) when there is a graphical session, and the terminal interface when there is not: no `DISPLAY` or `WAYLAND_DISPLAY`, or a display that does not answer (a `DISPLAY` left over from an ssh connection that has gone). `trecs-notes -tui` opens the terminal interface in any case.
+
+The terminal interface has no capture form: capturing needs the desktop. It opens on your notes: a **Find** box, the list of notes (newest first) and, beside it, the selected note, as coloured raw text or, if it looks like Markdown, as a Markdown preview (**F3** switches). The legend of keys across the top works as in `trecs-edit`; **F1** lists everything.
+
+Searching is as you type. Words are whole words, all of which must appear (the last may be a beginning, so `kube` finds `kubectl` while you are still typing); `"a phrase"` keeps words together; `tag:k8s`, `app:firefox`, `since:2026-01-31` and `until:2026-02-28` narrow the notes first. The text, the app name and the window title are all searched. **Regex** (Alt+R, off to begin with) makes the rest of the text a regular expression; **Match case** (Alt+I) works as in `trecs-edit`: off, case counts only if the text has a capital. The words are looked up in a full-text index, so they are fast on a large database; regular expressions read the notes themselves (from memory, once loaded) and results appear as they are found.
+
+**^E** edits the note's app, window title, tags and text (in the Text box, **^E** opens the text in `$VISUAL` or `$EDITOR`); **Del** deletes it, after asking. **F2** is Settings, which edits the same `config.json` as the graphical Settings window (minus the form size), including logging in; **F5** sends to the server what it has not seen. The hotkeys belong to the tray app, which watches the config file and restarts itself when they change.
+
 ## Syncing to a Trecs server
 
 With the option on, every saved note is also sent to the server you are logged in to, under your account, with its tags and the time you took it. Notes taken while offline, or while the server was unreachable, stay in the local database marked as unsent; **Send them now** in Settings (or the next successful sync) sends them.
 
 The login works like `trecs login`. The email is kept in `config.json`. The password is kept in the system keyring (the macOS Keychain, the Windows Credential Manager, or the Secret Service - GNOME Keyring, KWallet - on Linux). If there is no keyring, it is kept in a file in the data folder that only you can read, **as plain text**; the Settings window tells you when that happens. When a session lapses, the stored login renews it. **Log out** removes the stored password.
 
-Syncing needs a server that has the notes endpoint (`/v1/notes`).
+Edits and deletions are synced too: an edited note is sent again (the server's copy is replaced, its creation time kept), and a note you delete is deleted there. If the server is unreachable, or you are logged out, they wait, and go with the next sync (**F5** in the terminal interface, **Send them now** in Settings).
+
+Syncing needs a server that has the notes endpoints (`/v1/notes`, and `PUT` and `DELETE /v1/notes/{id}` for edits and deletions).
 
 ## Where things are stored
 
@@ -113,9 +132,10 @@ Everything is under `$XDG_CONFIG_HOME/trecs/notes/` (or `~/trecs/notes/` when `X
 
 Linux on X11 is where this is developed and tested. Be aware of the rest:
 
+- **X11 hotkeys** are grabbed in pure Go (no libX11 needed). A few combinations cannot be grabbed at all: with the usual keymaps the X server itself takes `Ctrl+Alt+F1` to `F12` (it switches virtual terminals).
 - **Wayland:** a program cannot register a global hotkey on its own; the protocol does not allow it. Bind the command `trecs-notes capture` (and `trecs-notes quick` for the quick save) to a key in your compositor's or desktop's keyboard settings instead. Reading the application name and window title is implemented for sway, Hyprland, niri, KDE (with `kdotool`) and GNOME (through an extension), but only the X11 path has been tested.
 - **macOS and Windows:** the code is written - hotkey, selection capture, the capture form - but it has not been run on those systems yet. The CI builds and tests it on both, which is how problems there will show up. Reports are welcome. Chromium-based browsers and Electron applications only expose their selection once an assistive tool asks for it, so the first capture in one may come back empty. On macOS the first capture asks for the Accessibility permission (System Settings > Privacy & Security > Accessibility).
-- **Settings and Browse notes** are Linux-only for now (see above); Browse notes is not built on any platform yet.
+- **Settings and Browse notes** windows are Linux-only for now (see above). The terminal interface (`trecs-notes -tui`) browses, searches, edits and deletes notes on every platform.
 
 ## Building from source
 

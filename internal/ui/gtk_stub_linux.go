@@ -9,3 +9,5 @@ func runGTK(in Input) (Result, error) { return Result{}, errGTKUnavailable }
 func ShowSettings(d SettingsData, h SettingsHandler) (SettingsResult, error) {
 	return SettingsResult{}, errGTKUnavailable
 }
+
+func ShowBrowse(sz BrowseSize, h BrowseHandler) error { return errGTKUnavailable }

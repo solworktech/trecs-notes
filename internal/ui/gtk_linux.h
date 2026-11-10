@@ -2,6 +2,25 @@
 #define TRECS_GTK_LINUX_H
 #include <gtk/gtk.h>
 
+// The note area (gtk_form.c): a Raw tab with syntax colours and a Markdown
+// preview, fed by Go (goRender). Used by the capture form and the browse window.
+typedef struct {
+	GtkWidget *raw, *preview, *notebook, *dlg;
+	GtkWidget *syn_button, *syn_popover, *syn_search, *syn_list;
+	guint timer;
+	int syntaxes_loaded, hint_done;
+	int quiet;         // set while a note is being loaded: no focus grabs
+	char *choice;      // "" = auto, "none", or a language name
+	char *auto_name;   // what auto resolved to last time
+} note_ctx;
+
+GtkWidget *trecs_note_area(note_ctx *c, const char *text);
+void trecs_note_load(note_ctx *c, const char *text, int markdown);
+void trecs_note_free(note_ctx *c);
+char *trecs_buffer_text(GtkTextBuffer *b);
+GtkWidget *trecs_scrolled(GtkWidget *child);
+void trecs_attach_tag_completion(GtkWidget *entry, const char **sugg, int nsugg);
+
 void trecs_apply_header(GtkWidget *dlg, const char *title, const unsigned char *icon, int iconlen);
 
 int trecs_form(const char *app, const char *title, const char *text,
@@ -39,5 +58,22 @@ extern char *goRender(int op, char *a, char *b);
 // call it. Returns a malloc'd "message \x1f login status \x1f unsynced \x1f
 // ok(0/1)".
 extern char *goSettingsAction(int action, char *a1, char *a2, char *a3);
+
+typedef struct {
+	const unsigned char *icon;
+	int iconlen;
+	int width, height;
+} browse_in;
+
+// The browse window. Returns 0 when it was closed, -1 if GTK could not start.
+int trecs_browse(const browse_in *in);
+
+// Called from any thread (Go's search goroutine): hands search results to the
+// window. kind 0: rows "id \x1f mark \x1f date \x1f app \x1f snippet" joined by
+// \x1e; kind 1: the search is over, payload "capped \x1f problem".
+void trecs_browse_deliver(int gen, const char *payload, int kind);
+
+// Implemented in Go (gtk_browse_linux.go); every answer is malloc'd.
+extern char *goBrowseAction(int op, char *a1, char *a2, char *a3, char *a4, char *a5);
 
 #endif

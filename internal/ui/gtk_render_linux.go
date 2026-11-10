@@ -43,14 +43,7 @@ func goRender(op C.int, a, b *C.char) *C.char {
 		}
 		var spans string
 		if resolved != "" {
-			// a note wrapped in a fence is coloured inside it, so that the
-			// fence itself does not open a string in the language
-			body, skip := render.FenceBody(text)
-			sp := render.Highlight(body, resolved)
-			for i := range sp {
-				sp[i].Start += skip
-				sp[i].End += skip
-			}
+			sp := render.Colour(text, resolved)
 			spans = render.EncodeSpans(sp)
 		}
 

@@ -246,42 +246,85 @@ type NoteResponse struct {
 	ID string `json:"id"`
 }
 
-// CreateNote sends one note. Returns the server's id for it.
-func (c *Client) CreateNote(ctx context.Context, n NoteRequest) (string, error) {
+// ErrRemoteGone means the server has no note with that id (it was deleted
+// there, or the server was reset).
+var ErrRemoteGone = errors.New("the server no longer has this note")
+
+// call makes one authenticated request. body may be nil. It returns the
+// response body of a 2xx answer.
+func (c *Client) call(ctx context.Context, method, path string, body any, what string) ([]byte, int, error) {
 	if len(c.Cookies) == 0 {
-		return "", ErrNotLoggedIn
+		return nil, 0, ErrNotLoggedIn
 	}
-	if n.Tags == nil {
-		n.Tags = []string{} // "tags": [], not null
+	var rd io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return nil, 0, err
+		}
+		rd = bytes.NewReader(payload)
 	}
-	payload, err := json.Marshal(n)
+	req, err := http.NewRequestWithContext(ctx, method, c.Server+path, rd)
 	if err != nil {
-		return "", err
+		return nil, 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Server+"/v1/notes", bytes.NewReader(payload))
-	if err != nil {
-		return "", err
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	for _, ck := range c.Cookies {
 		req.AddCookie(&http.Cookie{Name: ck.Name, Value: ck.Value})
 	}
 	resp, err := c.http().Do(req)
 	if err != nil {
-		return "", err
+		return nil, 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusUnauthorized {
-		return "", ErrNotLoggedIn
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, resp.StatusCode, ErrNotLoggedIn
+	case resp.StatusCode/100 != 2:
+		return nil, resp.StatusCode, fmt.Errorf("%s failed (%s): %s", what, resp.Status, strings.TrimSpace(string(raw)))
 	}
-	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-		return "", fmt.Errorf("creating note failed (%s): %s", resp.Status, string(body))
+	return raw, resp.StatusCode, nil
+}
+
+// CreateNote sends one note. Returns the server's id for it.
+func (c *Client) CreateNote(ctx context.Context, n NoteRequest) (string, error) {
+	if n.Tags == nil {
+		n.Tags = []string{} // "tags": [], not null
+	}
+	raw, _, err := c.call(ctx, http.MethodPost, "/v1/notes", n, "creating note")
+	if err != nil {
+		return "", err
 	}
 	var out NoteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", fmt.Errorf("saved remotely but the server's answer was not understood: %w", err)
 	}
 	return out.ID, nil
+}
+
+// UpdateNote replaces the server's copy of a note (app, title, text, tags;
+// the creation time is not changed).
+func (c *Client) UpdateNote(ctx context.Context, id string, n NoteRequest) error {
+	if n.Tags == nil {
+		n.Tags = []string{}
+	}
+	_, status, err := c.call(ctx, http.MethodPut, "/v1/notes/"+url.PathEscape(id), n, "updating note")
+	if status == http.StatusNotFound {
+		return ErrRemoteGone
+	}
+	return err
+}
+
+// DeleteNote removes the server's copy. A note the server no longer has is
+// not an error: the aim, that it be gone, is met.
+func (c *Client) DeleteNote(ctx context.Context, id string) error {
+	_, status, err := c.call(ctx, http.MethodDelete, "/v1/notes/"+url.PathEscape(id), nil, "deleting note")
+	if status == http.StatusNotFound {
+		return nil
+	}
+	return err
 }

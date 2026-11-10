@@ -37,6 +37,10 @@ type Note struct {
 	RemoteID        string
 	RemoteSyncedAt  *time.Time
 	RemoteSyncError string
+
+	// Dirty is set when the note was edited after the server last saw it
+	// (it has a RemoteID and the server's copy is stale).
+	Dirty bool
 }
 
 // CreatedAtEpoch is CreatedAt as Unix seconds, the form the local DB and the

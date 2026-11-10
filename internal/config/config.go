@@ -47,6 +47,9 @@ func NotesDir() (string, error) {
 	return filepath.Join(base, "notes"), nil
 }
 
+// Path is the config file.
+func Path() (string, error) { return configPath() }
+
 func configPath() (string, error) {
 	dir, err := NotesDir()
 	if err != nil {

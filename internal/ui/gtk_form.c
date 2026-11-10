@@ -33,6 +33,24 @@ static gboolean tag_selected(GtkEntryCompletion *c, GtkTreeModel *m, GtkTreeIter
 	return TRUE;
 }
 
+// Completion of the tag being typed, from the tags already in use.
+void trecs_attach_tag_completion(GtkWidget *e_tags, const char **sugg, int nsugg) {
+	if (nsugg <= 0) return;
+	GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
+	for (int i = 0; i < nsugg; i++) {
+		GtkTreeIter it;
+		gtk_list_store_append(store, &it);
+		gtk_list_store_set(store, &it, 0, sugg[i], -1);
+	}
+	GtkEntryCompletion *comp = gtk_entry_completion_new();
+	gtk_entry_completion_set_model(comp, GTK_TREE_MODEL(store));
+	gtk_entry_completion_set_text_column(comp, 0);
+	gtk_entry_completion_set_match_func(comp, tag_match, NULL, NULL);
+	gtk_entry_completion_set_minimum_key_length(comp, 1);
+	g_signal_connect(comp, "match-selected", G_CALLBACK(tag_selected), e_tags);
+	gtk_entry_set_completion(GTK_ENTRY(e_tags), comp);
+}
+
 // A client-side header bar instead of the window manager's title bar: the
 // WM decides title alignment (xfwm4 left-aligns), a GtkHeaderBar always
 // centres it, and it can carry the icon on every desktop.
@@ -40,6 +58,31 @@ void trecs_apply_header(GtkWidget *dlg, const char *title, const unsigned char *
 	GtkWidget *hb = gtk_header_bar_new();
 	gtk_header_bar_set_title(GTK_HEADER_BAR(hb), title);
 	gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb), TRUE);
+	// Some desktops' button layout has an "icon" element (e.g. "icon:close"):
+	// GTK then draws the window icon itself, on windows that are not dialogs,
+	// and ours would be a second one. Take it out of the layout we use.
+	gchar *layout = NULL;
+	g_object_get(gtk_settings_get_default(), "gtk-decoration-layout", &layout, NULL);
+	if (layout != NULL && strstr(layout, "icon") != NULL) {
+		gchar **side = g_strsplit(layout, ":", 2);
+		for (int i = 0; side[i] != NULL; i++) {
+			gchar **items = g_strsplit(side[i], ",", -1);
+			GString *kept = g_string_new("");
+			for (int j = 0; items[j] != NULL; j++) {
+				if (strcmp(items[j], "icon") == 0 || items[j][0] == 0) continue;
+				if (kept->len) g_string_append_c(kept, ',');
+				g_string_append(kept, items[j]);
+			}
+			g_free(side[i]);
+			side[i] = g_string_free(kept, FALSE);
+			g_strfreev(items);
+		}
+		gchar *fixed = g_strdup_printf("%s:%s", side[0], side[1] != NULL ? side[1] : "");
+		gtk_header_bar_set_decoration_layout(GTK_HEADER_BAR(hb), fixed);
+		g_free(fixed);
+		g_strfreev(side);
+	}
+	g_free(layout);
 	if (icon != NULL && iconlen > 0) {
 		GdkPixbufLoader *ld = gdk_pixbuf_loader_new();
 		if (gdk_pixbuf_loader_write(ld, icon, iconlen, NULL) && gdk_pixbuf_loader_close(ld, NULL)) {
@@ -70,14 +113,6 @@ static const char *color_hex[NCOLORS] = {
 	NULL, "#7d8b99", "#3f9142", "#00838f", "#a64ca6", "#c08a00", "#3b78c4", "#d1423f", "#d9731a", "#8a8f98",
 };
 
-typedef struct {
-	GtkWidget *raw, *preview, *notebook, *dlg;
-	GtkWidget *syn_button, *syn_popover, *syn_search, *syn_list;
-	guint timer;
-	int syntaxes_loaded, hint_done;
-	char *choice;      // "" = auto, "none", or a language name
-	char *auto_name;   // what auto resolved to last time
-} note_ctx;
 
 static void add_color_tags(GtkTextBuffer *b) {
 	char name[8];
@@ -112,7 +147,7 @@ static char *render(int op, const char *a, const char *b) {
 	return goRender(op, (char *)a, (char *)b);
 }
 
-static char *current_text(GtkTextBuffer *b) {
+char *trecs_buffer_text(GtkTextBuffer *b) {
 	GtkTextIter s, e;
 	gtk_text_buffer_get_bounds(b, &s, &e);
 	return gtk_text_buffer_get_text(b, &s, &e, FALSE);
@@ -210,7 +245,7 @@ static void on_syntax_popup(GtkWidget *w, gpointer d) {
 
 static void highlight_raw(note_ctx *c) {
 	GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
-	char *text = current_text(b);
+	char *text = trecs_buffer_text(b);
 	char *reply = render(OP_HIGHLIGHT, text, c->choice);
 	GtkTextIter s, e;
 	char name[8];
@@ -251,7 +286,7 @@ static gboolean highlight_timeout(gpointer d) {
 		c->hint_done = 1;
 		// first run: a fence on the first line ("```go") names the language
 		GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
-		char *text = current_text(b);
+		char *text = trecs_buffer_text(b);
 		char *hint = render(OP_FENCE_HINT, text, "");
 		if (hint[0]) {
 			g_free(c->choice);
@@ -281,7 +316,7 @@ static void add_flag_tag(GtkTextBuffer *b, const char *tag, int from, int to) {
 static void render_preview(note_ctx *c) {
 	GtkTextBuffer *src = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw));
 	GtkTextBuffer *b = gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->preview));
-	char *text = current_text(src);
+	char *text = trecs_buffer_text(src);
 	char *reply = render(OP_MARKDOWN, text, "");
 	gtk_text_buffer_set_text(b, "", -1);
 
@@ -320,6 +355,7 @@ static void render_preview(note_ctx *c) {
 
 static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer d) {
 	note_ctx *c = d;
+	if (c->quiet) return;
 	if (num == 1) {
 		render_preview(c);
 	} else {
@@ -327,7 +363,7 @@ static void on_switch_page(GtkNotebook *nb, GtkWidget *page, guint num, gpointer
 	}
 }
 
-static GtkWidget *scrolled(GtkWidget *child) {
+GtkWidget *trecs_scrolled(GtkWidget *child) {
 	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
 	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), GTK_SHADOW_IN);
 	gtk_container_add(GTK_CONTAINER(sw), child);
@@ -336,7 +372,7 @@ static GtkWidget *scrolled(GtkWidget *child) {
 }
 
 // builds the Raw / Markdown notebook; *raw_out is the editable view
-static GtkWidget *note_area(note_ctx *c, const char *text) {
+GtkWidget *trecs_note_area(note_ctx *c, const char *text) {
 	c->raw = gtk_text_view_new();
 	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(c->raw), GTK_WRAP_WORD_CHAR);
 	gtk_text_view_set_monospace(GTK_TEXT_VIEW(c->raw), TRUE);
@@ -353,8 +389,8 @@ static GtkWidget *note_area(note_ctx *c, const char *text) {
 	add_preview_tags(gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->preview)));
 
 	c->notebook = gtk_notebook_new();
-	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), scrolled(c->raw), gtk_label_new("Raw"));
-	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), scrolled(c->preview), gtk_label_new("Markdown"));
+	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), trecs_scrolled(c->raw), gtk_label_new("Raw"));
+	gtk_notebook_append_page(GTK_NOTEBOOK(c->notebook), trecs_scrolled(c->preview), gtk_label_new("Markdown"));
 	gtk_widget_set_vexpand(c->notebook, TRUE);
 
 	// the syntax chooser sits at the right end of the tab row: a button that
@@ -390,6 +426,28 @@ static GtkWidget *note_area(note_ctx *c, const char *text) {
 	g_signal_connect(c->notebook, "switch-page", G_CALLBACK(on_switch_page), c);
 	schedule_highlight(c, 30); // after the window is up: loading the lexers takes a moment
 	return c->notebook;
+}
+
+// Puts another note in the area: its language and tab are chosen afresh
+// (markdown: show the Markdown tab). It does not take the focus.
+void trecs_note_load(note_ctx *c, const char *text, int markdown) {
+	c->quiet = 1;
+	g_free(c->choice);
+	c->choice = g_strdup("");
+	g_free(c->auto_name);
+	c->auto_name = NULL;
+	c->hint_done = 0;
+	update_syntax_label(c);
+	gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(c->raw)), text, -1);
+	gtk_notebook_set_current_page(GTK_NOTEBOOK(c->notebook), markdown ? 1 : 0);
+	if (markdown) render_preview(c);
+	c->quiet = 0;
+}
+
+void trecs_note_free(note_ctx *c) {
+	if (c->timer) g_source_remove(c->timer);
+	g_free(c->choice);
+	g_free(c->auto_name);
 }
 
 static GtkWidget *add_row(GtkWidget *grid, int row, const char *label, GtkWidget *w, int top) {
@@ -436,26 +494,12 @@ int trecs_form(const char *app, const char *title, const char *text,
 	GtkWidget *e_tags = add_row(grid, 2, "Tags", gtk_entry_new(), 0);
 	gtk_entry_set_placeholder_text(GTK_ENTRY(e_tags), "space or comma separated");
 	gtk_entry_set_activates_default(GTK_ENTRY(e_tags), TRUE);
-	if (nsugg > 0) {
-		GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
-		for (int i = 0; i < nsugg; i++) {
-			GtkTreeIter it;
-			gtk_list_store_append(store, &it);
-			gtk_list_store_set(store, &it, 0, sugg[i], -1);
-		}
-		GtkEntryCompletion *comp = gtk_entry_completion_new();
-		gtk_entry_completion_set_model(comp, GTK_TREE_MODEL(store));
-		gtk_entry_completion_set_text_column(comp, 0);
-		gtk_entry_completion_set_match_func(comp, tag_match, NULL, NULL);
-		gtk_entry_completion_set_minimum_key_length(comp, 1);
-		g_signal_connect(comp, "match-selected", G_CALLBACK(tag_selected), e_tags);
-		gtk_entry_set_completion(GTK_ENTRY(e_tags), comp);
-	}
+	trecs_attach_tag_completion(e_tags, sugg, nsugg);
 
 	note_ctx ctx;
 	memset(&ctx, 0, sizeof ctx);
 	ctx.dlg = dlg;
-	add_row(grid, 3, "Note", note_area(&ctx, text), 1);
+	add_row(grid, 3, "Note", trecs_note_area(&ctx, text), 1);
 
 	gtk_widget_show_all(dlg);
 	gtk_widget_grab_focus(e_tags);
@@ -472,9 +516,7 @@ int trecs_form(const char *app, const char *title, const char *text,
 		*o_tags = g_strdup(gtk_entry_get_text(GTK_ENTRY(e_tags)));
 		*o_text = gtk_text_buffer_get_text(b, &s, &e, FALSE);
 	}
-	if (ctx.timer) g_source_remove(ctx.timer);
-	g_free(ctx.choice);
-	g_free(ctx.auto_name);
+	trecs_note_free(&ctx);
 	gtk_widget_destroy(dlg);
 	while (gtk_events_pending()) gtk_main_iteration();
 	return saved;

@@ -56,8 +56,8 @@ func (db *DB) SetRemoteSync(noteID int64, remoteID string, errMsg string) error 
 		syncedAt = &now
 	}
 	_, err := db.sql.Exec(
-		`UPDATE notes SET remote_id = ?, remote_synced_at = ?, remote_sync_error = ? WHERE id = ?`,
-		nullableString(remoteID), syncedAt, nullableString(errMsg), noteID,
+		`UPDATE notes SET remote_id = ?, remote_synced_at = ?, remote_sync_error = ?, dirty = CASE WHEN ? = '' THEN dirty ELSE 0 END WHERE id = ?`,
+		nullableString(remoteID), syncedAt, nullableString(errMsg), remoteID, noteID,
 	)
 	return err
 }

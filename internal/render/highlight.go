@@ -212,6 +212,32 @@ func Highlight(text, syntax string) []Span {
 	return spans(text, d)
 }
 
+// Colour is Highlight for a whole note: one wrapped in a code fence is
+// coloured inside it, so that the fence itself does not open a string in the
+// language. Both frontends call this.
+func Colour(text, syntax string) []Span {
+	body, skip := FenceBody(text)
+	sp := Highlight(body, syntax)
+	for i := range sp {
+		sp[i].Start += skip
+		sp[i].End += skip
+	}
+	return sp
+}
+
+// Auto picks the language of a note - what its code fence names, else what
+// Detect finds from the window title and the text - and colours it.
+func Auto(title, text string) (syntax string, spans []Span) {
+	syntax = FenceHint(text)
+	if syntax == "" {
+		syntax = Detect(title, text)
+	}
+	if syntax == "" {
+		return "", nil
+	}
+	return syntax, Colour(text, syntax)
+}
+
 func spans(text string, d *highlight.Def) []Span {
 	matches := highlight.NewHighlighter(d).HighlightString(text)
 	var out []Span

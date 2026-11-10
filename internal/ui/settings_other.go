@@ -11,3 +11,5 @@ var ErrNoSettingsWindow = errors.New("no settings window on this platform")
 func ShowSettings(d SettingsData, h SettingsHandler) (SettingsResult, error) {
 	return SettingsResult{}, ErrNoSettingsWindow
 }
+
+func ShowBrowse(sz BrowseSize, h BrowseHandler) error { return ErrNoSettingsWindow }
