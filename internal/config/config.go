@@ -179,3 +179,16 @@ func (c Config) Save() error {
 	}
 	return os.Rename(tmp.Name(), path)
 }
+
+// LockPath is a lock file (see internal/instance) in the notes folder, which
+// is created if needed.
+func LockPath(name string) (string, error) {
+	dir, err := NotesDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
+}

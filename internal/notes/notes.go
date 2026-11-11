@@ -7,7 +7,9 @@ package notes
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,9 @@ func Open() (*Service, error) {
 	db, err := localdb.Open(path)
 	if err != nil {
 		return nil, err
+	}
+	if w := localdb.ModeWarning(path); w != "" {
+		fmt.Fprintln(os.Stderr, "trecs-notes: warning:", w)
 	}
 	return &Service{DB: db, Cfg: cfg}, nil
 }

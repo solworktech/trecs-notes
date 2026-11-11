@@ -27,12 +27,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/solworktech/trecs-notes/internal/config"
 	"github.com/solworktech/trecs-notes/internal/gui"
+	"github.com/solworktech/trecs-notes/internal/instance"
 	"github.com/solworktech/trecs-notes/internal/notes"
 	"github.com/solworktech/trecs-notes/internal/tui"
 )
@@ -53,11 +56,15 @@ func main() {
 	}
 	gui.SetIcon(trayIconPNG)
 
+	defer func() { runtime.KeepAlive(heldInstance) }()
+
 	args := os.Args[1:]
 	if len(args) == 0 {
-		if err := gui.Available(); err != nil {
-			fmt.Fprintf(os.Stderr, "trecs-notes: no graphical session (%v); starting the terminal interface\n", err)
-			runTUI()
+		gerr := gui.Available()
+		secondary := claimInstance(gerr == nil)
+		if gerr != nil {
+			fmt.Fprintf(os.Stderr, "trecs-notes: no graphical session (%v); starting the terminal interface\n", gerr)
+			runTUI(secondary)
 			return
 		}
 		gui.RunTray()
@@ -65,7 +72,7 @@ func main() {
 	}
 	switch args[0] {
 	case "-tui", "--tui":
-		runTUI()
+		runTUI(claimInstance(false))
 	case "capture":
 		gui.RunOneCapture(false)
 	case "quick": // like the quick-save hotkey: store the selection, no form
@@ -88,15 +95,47 @@ func main() {
 	}
 }
 
-func runTUI() {
+// claimInstance makes this process the one running trecs-notes for the
+// person (the lock lives until the process ends). If another already is, it
+// says so, and then: with openWindow set it opens the notes window instead
+// and exits; otherwise it returns true and the caller carries on as a second
+// viewer (no timed sync of its own; the first one does that).
+var heldInstance *instance.Lock
+
+func claimInstance(openWindow bool) (secondary bool) {
+	path, err := config.LockPath("instance.lock")
+	if err != nil {
+		return false
+	}
+	lock, err := instance.TryLock(path)
+	switch {
+	case err == nil:
+		heldInstance = lock // kept referenced: a collected file would drop the lock
+		return false
+	case errors.Is(err, instance.ErrHeld):
+		fmt.Fprintf(os.Stderr, "trecs-notes is already running%s.\n", instance.Describe(path))
+		if openWindow {
+			os.Exit(gui.RunBrowse())
+		}
+		return true
+	default:
+		fmt.Fprintf(os.Stderr, "trecs-notes: warning: cannot check for a running copy: %v\n", err)
+		return false
+	}
+}
+
+func runTUI(secondary bool) {
 	s, err := notes.Open()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "trecs-notes:", err)
 		os.Exit(1)
 	}
-	stopSync := s.StartAutoSync(time.Minute)
+	stop := func() {}
+	if !secondary {
+		stop = s.StartAutoSync(time.Minute)
+	}
 	err = tui.Run(s)
-	stopSync()
+	stop()
 	s.Flush(5 * time.Second) // a change made just before quitting still goes
 	_ = s.Close()
 	if err != nil {

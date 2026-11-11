@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/solworktech/trecs-notes/internal/config"
+	"github.com/solworktech/trecs-notes/internal/instance"
 	"github.com/solworktech/trecs-notes/internal/model"
 	"github.com/solworktech/trecs-notes/internal/notes"
 	"github.com/solworktech/trecs-notes/internal/render"
@@ -45,6 +47,16 @@ func (a *app) openBrowse() {
 // RunBrowse is `trecs-notes browse` (internal): the browse window. Exit 2 =
 // no window available.
 func RunBrowse() int {
+	if path, err := config.LockPath("browse.lock"); err == nil {
+		lock, err := instance.TryLock(path)
+		if errors.Is(err, instance.ErrHeld) {
+			fmt.Fprintf(os.Stderr, "The notes window is already open%s.\n", instance.Describe(path))
+			return 0
+		}
+		if err == nil {
+			defer lock.Unlock()
+		}
+	}
 	svc, err := notes.Open()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "browse:", err)

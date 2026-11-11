@@ -13,9 +13,11 @@ package localdb
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
@@ -34,6 +36,9 @@ func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
+	if err := createFile(path); err != nil {
+		return nil, err
+	}
 	// _pragma sets foreign_keys=on (SQLite defaults it off per-connection)
 	// and busy_timeout so a concurrent write from, say, a "browse notes"
 	// window open at the same time as a capture doesn't surface as a
@@ -49,6 +54,45 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("migrating %s: %w", path, err)
 	}
 	return db, nil
+}
+
+// FileMode is the permission a new database file gets: the owner reads and
+// writes, the group reads. (SQLite gives its journal and -wal files the mode
+// of the database file.) It is not applied on Windows, which has no such bits.
+const FileMode os.FileMode = 0o640
+
+// createFile makes the database file with FileMode if it is not there yet,
+// whatever the umask says. An existing file is left as the person has it;
+// ModeWarning says when that differs.
+func createFile(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, FileMode)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(path, FileMode)
+}
+
+// ModeWarning is a sentence to show when the database file at path has
+// permissions other than FileMode, or "" when it is as expected (always, on
+// Windows, and when the file cannot be read about).
+func ModeWarning(path string) string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	if got := fi.Mode().Perm(); got != FileMode {
+		return fmt.Sprintf("%s has permissions %04o, expected %04o (to fix: chmod %o %s)", path, got, FileMode, FileMode, path)
+	}
+	return ""
 }
 
 func (db *DB) Close() error {

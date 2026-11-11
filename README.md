@@ -97,6 +97,10 @@ The Settings window exists on Linux for now. On the other platforms, **Settings*
 
 Searching is as you type; the rules are the same as in the terminal interface (below): whole words, `"a phrase"`, `tag:`, `app:`, `since:`, `until:`, and the **Regex** and **Match case** boxes. Ctrl+F goes to the search box.
 
+## One copy at a time
+
+Only one trecs-notes runs per user. Starting it again says it is already running (with the process id) and opens the notes window instead; with `-tui`, or without a graphical session, it opens a second terminal view of the notes, which does not sync on its own (the first copy does). Only one notes window is open at a time: opening it again says so. Syncs from different processes (capture, window, tray) take turns, so a note is never sent twice. The locks are held by the system and go away when a process ends, even if it crashes.
+
 ## Terminal interface
 
 `trecs-notes` has two frontends over the same code. With no arguments it opens the graphical app (tray icon, hotkeys, windows) when there is a graphical session, and the terminal interface when there is not: no `DISPLAY` or `WAYLAND_DISPLAY`, or a display that does not answer (a `DISPLAY` left over from an ssh connection that has gone). `trecs-notes -tui` opens the terminal interface in any case.
@@ -125,7 +129,8 @@ Everything is under `$XDG_CONFIG_HOME/trecs/notes/` (or `~/trecs/notes/` when `X
 
 | File | Contents |
 |---|---|
-| `notes.db` | The notes (SQLite). |
+| `notes.db` | The notes (SQLite). Created readable by you and your group, not others (`0640`); at start-up a warning is printed to stderr if the file has other permissions. Windows has no such bits and is not checked. |
+| `instance.lock`, `browse.lock`, `sync.lock` | Lock files that keep one app, one notes window and one sync running at a time (see below). They hold only a process id. |
 | `config.json` | Hotkey, form size, sync on or off, server, email. |
 | `session` | The login session cookie for the server. |
 | `credentials.json` | Only if there is no system keyring: your login, readable by you only. |

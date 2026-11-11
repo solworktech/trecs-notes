@@ -7,12 +7,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"os"
+
 	"github.com/solworktech/trecs-notes/internal/api"
+	"github.com/solworktech/trecs-notes/internal/config"
 	"github.com/solworktech/trecs-notes/internal/credentials"
+	"github.com/solworktech/trecs-notes/internal/instance"
 	"github.com/solworktech/trecs-notes/internal/localdb"
 	"github.com/solworktech/trecs-notes/internal/model"
 )
@@ -21,6 +26,31 @@ import (
 // background sync after a save, the timed one and a button press must not
 // send the same new note twice.
 var syncMu sync.Mutex
+
+// lockSync takes syncMu and a lock on sync.lock in the data folder, which
+// does the same across processes (the tray, a notes window and a capture
+// are separate processes). If the file lock cannot be had - it is busy for
+// 30 seconds, or the folder is unusable - the in-process lock alone is kept
+// and a busy lock is reported as an error.
+func lockSync() (unlock func(), err error) {
+	syncMu.Lock()
+	dir, derr := config.NotesDir()
+	if derr != nil {
+		return syncMu.Unlock, nil
+	}
+	if derr := os.MkdirAll(dir, 0o700); derr != nil {
+		return syncMu.Unlock, nil
+	}
+	l, lerr := instance.WaitLock(filepath.Join(dir, "sync.lock"), 30*time.Second)
+	if lerr != nil {
+		if errors.Is(lerr, instance.ErrHeld) {
+			syncMu.Unlock()
+			return nil, errors.New("another trecs-notes is syncing; try again in a moment")
+		}
+		return syncMu.Unlock, nil
+	}
+	return func() { l.Unlock(); syncMu.Unlock() }, nil
+}
 
 // withClient runs fn with a client for the saved login. If the session is
 // missing or has lapsed and a login is stored (internal/credentials), it
@@ -52,7 +82,22 @@ func request(n model.Note) api.NoteRequest {
 
 // SyncNote sends a note the server does not have yet and records the
 // outcome on it, success or failure.
+//
+// It waits for any other sync to finish first, and then looks at the note
+// again: if that sync already sent it, nothing is sent twice.
 func SyncNote(db *localdb.DB, n model.Note) error {
+	unlock, err := lockSync()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if cur, gerr := db.Get(n.ID); gerr == nil && cur.RemoteID != "" {
+		return nil
+	}
+	return syncNote(db, n)
+}
+
+func syncNote(db *localdb.DB, n model.Note) error {
 	var id string
 	err := withClient(func(ctx context.Context, c *api.Client) (err error) {
 		id, err = c.CreateNote(ctx, request(n))
@@ -68,6 +113,15 @@ func SyncNote(db *localdb.DB, n model.Note) error {
 // SyncEdit sends an edited note to the server. If the server has lost it,
 // the note is sent again as a new one.
 func SyncEdit(db *localdb.DB, n model.Note) error {
+	unlock, err := lockSync()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return syncEdit(db, n)
+}
+
+func syncEdit(db *localdb.DB, n model.Note) error {
 	err := withClient(func(ctx context.Context, c *api.Client) error {
 		return c.UpdateNote(ctx, n.RemoteID, request(n))
 	})
@@ -76,7 +130,7 @@ func SyncEdit(db *localdb.DB, n model.Note) error {
 			return e
 		}
 		n.RemoteID = ""
-		return SyncNote(db, n)
+		return syncNote(db, n)
 	}
 	if err != nil {
 		_ = db.SetRemoteSync(n.ID, n.RemoteID, err.Error())
@@ -88,6 +142,15 @@ func SyncEdit(db *localdb.DB, n model.Note) error {
 // SyncDelete tells the server a note was deleted here, then forgets the
 // tombstone.
 func SyncDelete(db *localdb.DB, remoteID string) error {
+	unlock, err := lockSync()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return syncDelete(db, remoteID)
+}
+
+func syncDelete(db *localdb.DB, remoteID string) error {
 	err := withClient(func(ctx context.Context, c *api.Client) error {
 		return c.DeleteNote(ctx, remoteID)
 	})
@@ -112,8 +175,11 @@ type PullResult = localdb.PullStats
 // (per server) after every page, so an interrupted pull carries on where it
 // stopped.
 func Pull(db *localdb.DB) (PullResult, error) {
-	syncMu.Lock()
-	defer syncMu.Unlock()
+	unlock, err := lockSync()
+	if err != nil {
+		return PullResult{}, err
+	}
+	defer unlock()
 	var total PullResult
 	for {
 		more := false
@@ -217,8 +283,11 @@ func relogin() error {
 // many went and how many did not. It stops at the first "not logged in",
 // since the rest would fail the same way.
 func SendUnsynced(db *localdb.DB, limit int) (sent, failed int, lastErr error) {
-	syncMu.Lock()
-	defer syncMu.Unlock()
+	unlock, err := lockSync()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer unlock()
 	fresh, err := db.Unsynced(limit)
 	if err != nil {
 		return 0, 0, err
@@ -246,17 +315,17 @@ func SendUnsynced(db *localdb.DB, limit int) (sent, failed int, lastErr error) {
 		return false
 	}
 	for _, n := range fresh {
-		if do(func() error { return SyncNote(db, n) }) {
+		if do(func() error { return syncNote(db, n) }) {
 			return sent, failed, lastErr
 		}
 	}
 	for _, n := range edited {
-		if do(func() error { return SyncEdit(db, n) }) {
+		if do(func() error { return syncEdit(db, n) }) {
 			return sent, failed, lastErr
 		}
 	}
 	for _, id := range gone {
-		if do(func() error { return SyncDelete(db, id) }) {
+		if do(func() error { return syncDelete(db, id) }) {
 			return sent, failed, lastErr
 		}
 	}
