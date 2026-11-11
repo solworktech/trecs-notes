@@ -122,9 +122,9 @@ func (a *app) syncNow() {
 		a.say("Syncing is off: turn it on in Settings (F2).")
 		return
 	}
-	a.say("[" + dim + "]Sending...")
+	a.say("[" + dim + "]Syncing...")
 	go func() {
-		r := notes.SendUnsynced(a.svc.DB)
+		r := notes.SyncNow(a.svc.DB)
 		a.tv.QueueUpdateDraw(func() {
 			colour := "white"
 			if !r.OK {
@@ -260,7 +260,7 @@ func helpRows(page string) (title string, rows []helpRow) {
 			{"Hotkeys", "For the tray app, which restarts itself when they change"},
 			{"Copy fallback", "Try the copy shortcut when an application reports no selection"},
 			{"Sync to server", "Also send each new note to the trecs server"},
-			{"Sync notes to server", "Send the notes the server does not have yet"},
+			{"Sync notes to server", "Sync both ways now: send what the server has not seen, fetch what it has that this computer has not"},
 			{"^S", "Save the settings"},
 			{"Esc", "Close without saving"},
 			{"F1", "This help"},
@@ -293,7 +293,7 @@ func helpRows(page string) (title string, rows []helpRow) {
 		{"^E", "Edit the selected note"},
 		{"Del", "Delete the selected note (it asks first)"},
 		{"F3", "Show the note as Raw text or as Markdown"},
-		{"F5", "Send changes the server has not seen (when syncing is on)"},
+		{"F5", "Sync both ways: send what the server has not seen, fetch what it has that this computer has not (when syncing is on)"},
 		{"F2", "Settings"},
 		{"Esc", "Clear Find, or go back to the list"},
 		{"? / F1", "This help"},

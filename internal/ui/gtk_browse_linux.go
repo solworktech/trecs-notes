@@ -103,7 +103,7 @@ func goBrowseAction(op C.int, a1, a2, a3, a4, a5 *C.char) *C.char {
 
 	case bStatus:
 		text, attention := h.Status()
-		return C.CString(flag(attention) + "\x1f" + field(text))
+		return C.CString(flag(attention) + "\x1f" + flag(h.SyncOn()) + "\x1f" + field(text))
 
 	case bPoll:
 		return C.CString(flag(h.Changed()))

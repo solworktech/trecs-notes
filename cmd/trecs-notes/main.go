@@ -94,7 +94,9 @@ func runTUI() {
 		fmt.Fprintln(os.Stderr, "trecs-notes:", err)
 		os.Exit(1)
 	}
+	stopSync := s.StartAutoSync(time.Minute)
 	err = tui.Run(s)
+	stopSync()
 	s.Flush(5 * time.Second) // a change made just before quitting still goes
 	_ = s.Close()
 	if err != nil {

@@ -55,6 +55,9 @@ func RunBrowse() int {
 		_ = svc.Close()
 	}()
 
+	stopSync := svc.StartAutoSync(time.Minute)
+	defer stopSync() // deferred after the Flush above, so it runs first
+
 	ctx := context.Background()
 	var lastVersion int64
 	h := ui.BrowseHandler{
@@ -78,7 +81,7 @@ func RunBrowse() int {
 			if err != nil {
 				return ui.BrowseNote{}, err
 			}
-			state, _ := svc.SyncState(n)
+			state, _ := svc.NoteStatus(n)
 			return ui.BrowseNote{
 				ID: n.ID, App: n.AppName, Title: n.WindowTitle, Tags: joinTags(n.Tags), Text: n.Text,
 				Created: n.CreatedAt.Format("Mon 2 Jan 2006 15:04"), Sync: state, Markdown: render.LooksLikeMarkdown(n.Text),
@@ -98,10 +101,11 @@ func RunBrowse() int {
 		},
 		Delete: svc.Delete,
 		Sync: func() (string, bool) {
-			r := notes.SendUnsynced(svc.DB)
+			r := notes.SyncNow(svc.DB)
 			return r.Message, r.OK
 		},
 		Status: svc.StatusLine,
+		SyncOn: func() bool { return svc.Cfg.RemoteSyncEnabled },
 		Changed: func() bool {
 			v, err := svc.DB.DataVersion(ctx)
 			if err != nil || v == lastVersion {

@@ -356,12 +356,13 @@ func (b *browser) show(row int) {
 		what = "(no app or window title)"
 	}
 	head.WriteString("[::b]" + tview.Escape(what) + "[::-]\n")
-	meta := n.CreatedAt.Format("Mon 2 Jan 2006 15:04")
+	meta := "Created: " + n.CreatedAt.Format("Mon 2 Jan 2006 15:04")
 	if len(n.Tags) > 0 {
 		meta += "   tags: " + strings.Join(n.Tags, ", ")
 	}
 	head.WriteString("[" + dim + "]" + tview.Escape(meta) + "\n")
-	if text, attention := b.a.svc.SyncState(n); text != "" {
+	if text, attention := b.a.svc.NoteStatus(n); text != "" {
+		text = "Status: " + text
 		colour := dim
 		if attention {
 			colour = warn

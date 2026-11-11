@@ -143,6 +143,44 @@ func (s *Service) syncInBackground() {
 	}()
 }
 
+// StartAutoSync syncs both ways now and then every interval, for as long as
+// a window or terminal that shows notes is open, so that what is changed on
+// the website or on another computer turns up in the list by itself. Failures
+// (no network, logged out) are left for the next round; the manual Sync says
+// what went wrong. The returned function stops it, and waits for a sync in
+// progress to finish.
+func (s *Service) StartAutoSync(interval time.Duration) (stop func()) {
+	quit := make(chan struct{})
+	done := make(chan struct{})
+	round := func() {
+		if s.Cfg.RemoteSyncEnabled {
+			_, _, _, _ = remote.Sync(s.DB)
+		}
+	}
+	go func() {
+		defer close(done)
+		round()
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-quit:
+				return
+			case <-t.C:
+				round()
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(quit) })
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+	}
+}
+
 // Flush waits, up to d, for background syncs to finish: a short-lived
 // process (the browse window) calls it on the way out, so that a change made
 // just before closing still reaches the server.

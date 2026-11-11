@@ -126,7 +126,7 @@ func RunSettings() int {
 			if err != nil {
 				return ui.SettingsReply{Message: err.Error(), Unsynced: unsynced}
 			}
-			r = notes.SendUnsynced(d)
+			r = notes.SyncNow(d)
 			unsynced, _ = d.CountUnsynced()
 		case ui.ActOpenFolder:
 			if dir, err := config.NotesDir(); err == nil {

@@ -61,7 +61,7 @@ func (db *DB) Close() error {
 }
 
 // schemaVersion is bumped whenever migrate() gains a new step.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // migrations[i] takes the schema from version i to i+1.
 var migrations = [][]string{
@@ -125,6 +125,12 @@ var migrations = [][]string{
 	// writes it as always set, as the server's notes.updated_at is.
 	{
 		`UPDATE notes SET updated_at_epoch = created_at_epoch WHERE updated_at_epoch IS NULL`,
+	},
+	// v4: two-way sync. Where the pull from the server has got to (one
+	// row per server), and a way to find a note by the server's id.
+	{
+		`CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`CREATE INDEX idx_notes_remote_id ON notes(remote_id)`,
 	},
 }
 

@@ -146,7 +146,7 @@ func TestMigrateV1Database(t *testing.T) {
 	n := model.Note{Text: "survives the upgrade"}
 	_ = db.Insert(&n)
 	// pretend this was a v1 file: drop the v2 additions
-	for _, s := range []string{`DROP TRIGGER notes_ai`, `DROP TRIGGER notes_ad`, `DROP TRIGGER notes_au`, `DROP TABLE notes_fts`, `DROP TABLE note_tombstones`, `ALTER TABLE notes DROP COLUMN updated_at_epoch`, `ALTER TABLE notes DROP COLUMN dirty`, `UPDATE schema_version SET version = 1`} {
+	for _, s := range []string{`DROP TABLE sync_state`, `DROP INDEX idx_notes_remote_id`, `DROP TRIGGER notes_ai`, `DROP TRIGGER notes_ad`, `DROP TRIGGER notes_au`, `DROP TABLE notes_fts`, `DROP TABLE note_tombstones`, `ALTER TABLE notes DROP COLUMN updated_at_epoch`, `ALTER TABLE notes DROP COLUMN dirty`, `UPDATE schema_version SET version = 1`} {
 		if _, err := db.sql.Exec(s); err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +188,7 @@ func TestMigrateFillsUpdatedAt(t *testing.T) {
 	}
 	n := model.Note{Text: "old", CreatedAt: time.Unix(1700000000, 0)}
 	_ = db.Insert(&n)
-	for _, s := range []string{`UPDATE notes SET updated_at_epoch = NULL`, `UPDATE schema_version SET version = 2`} {
+	for _, s := range []string{`DROP TABLE sync_state`, `DROP INDEX idx_notes_remote_id`, `UPDATE notes SET updated_at_epoch = NULL`, `UPDATE schema_version SET version = 2`} {
 		if _, err := db.sql.Exec(s); err != nil {
 			t.Fatal(err)
 		}

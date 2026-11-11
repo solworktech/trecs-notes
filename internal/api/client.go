@@ -320,6 +320,53 @@ func (c *Client) UpdateNote(ctx context.Context, id string, n NoteRequest) error
 	return err
 }
 
+// RemoteNote is a note as the server returns it.
+type RemoteNote struct {
+	ID          string   `json:"id"`
+	AppName     string   `json:"app_name"`
+	WindowTitle string   `json:"window_title"`
+	Body        string   `json:"body"`
+	Tags        []string `json:"tags"`
+	CreatedAt   int64    `json:"created_at"`
+	UpdatedAt   int64    `json:"updated_at"`
+}
+
+// NoteChange is one entry of the server's feed: a note as it now is, or the
+// id of one that was deleted.
+type NoteChange struct {
+	Seq     uint64      `json:"seq"`
+	Note    *RemoteNote `json:"note"`
+	Deleted string      `json:"deleted"`
+}
+
+// NoteChanges is a page of the feed. Cursor is what to ask from next.
+type NoteChanges struct {
+	Changes []NoteChange `json:"changes"`
+	Cursor  uint64       `json:"cursor"`
+	More    bool         `json:"more"`
+}
+
+// ErrSyncUnsupported means the server has no change feed (it is older than
+// two-way sync).
+var ErrSyncUnsupported = errors.New("this server cannot send changes yet (it needs an upgrade for two-way sync)")
+
+// NoteChangesSince asks what changed in the person's notes after cursor.
+func (c *Client) NoteChangesSince(ctx context.Context, cursor uint64, limit int) (NoteChanges, error) {
+	var out NoteChanges
+	raw, status, err := c.call(ctx, http.MethodGet,
+		fmt.Sprintf("/v1/sync/notes?since=%d&limit=%d", cursor, limit), nil, "fetching changes")
+	if status == http.StatusNotFound {
+		return out, ErrSyncUnsupported
+	}
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return out, fmt.Errorf("the server's list of changes was not understood: %w", err)
+	}
+	return out, nil
+}
+
 // DeleteNote removes the server's copy. A note the server no longer has is
 // not an error: the aim, that it be gone, is met.
 func (c *Client) DeleteNote(ctx context.Context, id string) error {

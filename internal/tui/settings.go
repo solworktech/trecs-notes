@@ -39,7 +39,7 @@ func newSettingsModal(a *app) *settingsModal {
 	m.form.SetButtonsAlign(tview.AlignLeft).SetItemPadding(1)
 
 	hint := tview.NewTextView().SetDynamicColors(true).SetWrap(true).
-		SetText("[" + dim + "]The tray restarts itself when hotkeys change. Empty Quick save = off.")
+		SetText("[" + dim + "]The tray restarts itself when hotkeys change. Empty Quick note hotkey = off.")
 	hint.SetBackgroundColor(modalBackground)
 
 	m.paths = tview.NewTextView().SetDynamicColors(true)
@@ -83,8 +83,8 @@ func (m *settingsModal) load() error {
 	}
 	m.base = f
 	m.form.Clear(true)
-	m.form.AddInputField("Hotkey", f.Hotkey, 30, nil, nil)
-	m.form.AddInputField("Quick save", f.QuickHotkey, 30, nil, nil)
+	m.form.AddInputField("Add note hotkey", f.Hotkey, 30, nil, nil)
+	m.form.AddInputField("Quick note hotkey", f.QuickHotkey, 30, nil, nil)
 	m.form.AddCheckbox(lblCopy, f.CopyFallback, nil)
 	m.form.AddCheckbox(lblSync, f.RemoteSyncEnabled, nil)
 	m.form.AddInputField("Server", f.Server, 34, nil, nil)
@@ -133,8 +133,8 @@ func (m *settingsModal) checked(label string) bool {
 // of the graphical form) is as it was loaded.
 func (m *settingsModal) current() notes.Form {
 	f := m.base
-	f.Hotkey = strings.TrimSpace(m.text("Hotkey"))
-	f.QuickHotkey = strings.TrimSpace(m.text("Quick save"))
+	f.Hotkey = strings.TrimSpace(m.text("Add note hotkey"))
+	f.QuickHotkey = strings.TrimSpace(m.text("Quick note hotkey"))
 	f.CopyFallback = m.checked(lblCopy)
 	f.RemoteSyncEnabled = m.checked(lblSync)
 	f.Server = m.text("Server")
@@ -191,7 +191,7 @@ func (m *settingsModal) doLogin() {
 func (m *settingsModal) doLogout() { m.run(notes.Logout) }
 
 func (m *settingsModal) doSend() {
-	m.run(func() notes.Reply { return notes.SendUnsynced(m.a.svc.DB) })
+	m.run(func() notes.Reply { return notes.SyncNow(m.a.svc.DB) })
 }
 
 // gap is an empty row.

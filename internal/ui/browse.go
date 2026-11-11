@@ -20,7 +20,7 @@ type BrowseNote struct {
 	Tags     string // as typed: separated by commas or spaces
 	Text     string
 	Created  string // "Mon 2 Jan 2006 15:04"
-	Sync     string // where the note stands with the server; "" when syncing is off
+	Sync     string // the Status line: when last updated and where the note stands with the server
 	Markdown bool   // the note looks like Markdown: open on that tab
 }
 
@@ -35,8 +35,11 @@ type BrowseHandler struct {
 	Get    func(id int64) (BrowseNote, error)
 	Save   func(n BrowseNote) (message string, err error)
 	Delete func(id int64) error
-	// Sync sends what the server has not seen.
+	// Sync sends what the server has not seen and fetches what it has that
+	// this computer has not.
 	Sync func() (message string, ok bool)
+	// SyncOn reports whether syncing is switched on (the Sync button works).
+	SyncOn func() bool
 	// Status is the line at the bottom; attention: changes are waiting.
 	Status func() (text string, attention bool)
 	// Changed reports whether the database changed since the last call.

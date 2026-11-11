@@ -7,8 +7,9 @@
 enum { ACT_LOGIN = 1, ACT_LOGOUT = 2, ACT_SEND = 3, ACT_OPEN_FOLDER = 4, ACT_CHECK_HOTKEY = 5 };
 
 typedef struct {
-	GtkWidget *hotkey, *quick, *copyfb, *remote, *server, *email, *password, *login, *logout;
+	GtkWidget *dlg, *hotkey, *quick, *copyfb, *remote, *server, *email, *password, *login, *logout;
 	GtkWidget *login_status, *unsynced, *send, *message, *remote_box;
+	char *hotkey_val, *quick_val; // what the two hotkey buttons stand for ("" = not set)
 } widgets;
 
 static void set_message(widgets *w, const char *text, int ok) {
@@ -62,17 +63,22 @@ static gboolean is_modifier_key(const char *n) {
 	    || g_str_has_prefix(n, "ISO_") || g_str_has_prefix(n, "Caps") || g_str_has_prefix(n, "Num");
 }
 
-// The hotkey box records what is pressed instead of taking typed text.
-static gboolean on_hotkey_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
+// What a key press means in the hotkey box: 0 = an ordinary key, left to type
+// (or to move focus); 1 = a modifier on its way to a combination, swallowed;
+// 2 = a combination, written to *out ("Ctrl+Alt+Space"). A combination has
+// Ctrl, Alt or Super held (so that a capital letter, which needs Shift, is
+// still typed), or is Shift with a function key.
+static int sequence_of(GdkEventKey *ev, char **out) {
 	guint mods = ev->state & gtk_accelerator_get_default_mod_mask();
-	guint want = GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SHIFT_MASK | GDK_SUPER_MASK | GDK_MOD4_MASK;
-	if (!(mods & want)) return FALSE; // a plain key (Tab, Esc...) keeps its normal job, so focus can still move on
+	guint strong = GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SUPER_MASK | GDK_MOD4_MASK;
 	// the key itself, as if no modifier were held (Shift+1 is "1", not "!")
 	guint kv = 0;
 	gdk_keymap_translate_keyboard_state(gdk_keymap_get_for_display(gdk_display_get_default()),
 	                                    ev->hardware_keycode, 0, ev->group, &kv, NULL, NULL, NULL);
 	const char *n = gdk_keyval_name(kv);
-	if (is_modifier_key(n)) return TRUE; // still holding the modifiers; wait for the real key
+	gboolean fkey = n && n[0] == 'F' && n[1] >= '1' && n[1] <= '9';
+	if (!(mods & strong) && !((mods & GDK_SHIFT_MASK) && fkey)) return 0;
+	if (is_modifier_key(n)) return 1;
 	GString *s = g_string_new("");
 	if (mods & GDK_CONTROL_MASK) g_string_append(s, "Ctrl+");
 	if (mods & GDK_MOD1_MASK) g_string_append(s, "Alt+");
@@ -81,19 +87,77 @@ static gboolean on_hotkey_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
 	if (strlen(n) == 1) g_string_append_c(s, g_ascii_toupper(n[0]));
 	else if (strcmp(n, "space") == 0) g_string_append(s, "Space");
 	else g_string_append(s, n);
-	gtk_entry_set_text(GTK_ENTRY(e), s->str);
-	g_string_free(s, TRUE);
-	return TRUE;
+	*out = g_string_free(s, FALSE);
+	return 2;
 }
 
-// the quick-save box: the same, and Backspace or Delete empties it (= off)
-static gboolean on_quick_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
-	if ((ev->keyval == GDK_KEY_BackSpace || ev->keyval == GDK_KEY_Delete)
-	    && !(ev->state & gtk_accelerator_get_default_mod_mask())) {
-		gtk_entry_set_text(GTK_ENTRY(e), "");
-		return TRUE;
+static gboolean on_sequence_key(GtkWidget *e, GdkEventKey *ev, gpointer d) {
+	char *seq = NULL;
+	int k = sequence_of(ev, &seq);
+	if (k == 2) {
+		gtk_entry_set_text(GTK_ENTRY(e), seq);
+		gtk_editable_set_position(GTK_EDITABLE(e), -1);
+		g_free(seq);
 	}
-	return on_hotkey_key(e, ev, d);
+	return k != 0;
+}
+
+static void show_sequence(GtkWidget *button, const char *seq) {
+	gtk_button_set_label(GTK_BUTTON(button), seq[0] ? seq : "Not set");
+}
+
+// A hotkey button's job: a box, centred over the settings window, that asks
+// for the sequence. It is taken as it is pressed, or as it is typed.
+static void on_hotkey_button(GtkButton *button, gpointer d) {
+	widgets *w = d;
+	gboolean quick = GTK_WIDGET(button) == w->quick;
+	const char *what = quick ? "Quick note hotkey" : "Add note hotkey";
+	char **value = quick ? &w->quick_val : &w->hotkey_val;
+
+	GtkWidget *box = gtk_dialog_new_with_buttons(what, GTK_WINDOW(w->dlg), GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+		"_Cancel", GTK_RESPONSE_CANCEL, NULL);
+	if (quick) gtk_dialog_add_button(GTK_DIALOG(box), "_Turn off", GTK_RESPONSE_REJECT);
+	gtk_dialog_add_button(GTK_DIALOG(box), "_OK", GTK_RESPONSE_ACCEPT);
+	gtk_dialog_set_default_response(GTK_DIALOG(box), GTK_RESPONSE_ACCEPT);
+	gtk_window_set_position(GTK_WINDOW(box), GTK_WIN_POS_CENTER_ON_PARENT);
+	gtk_window_set_keep_above(GTK_WINDOW(box), TRUE);
+	gtk_window_set_resizable(GTK_WINDOW(box), FALSE);
+	gtk_container_set_border_width(GTK_CONTAINER(box), 14);
+
+	GtkWidget *area = gtk_dialog_get_content_area(GTK_DIALOG(box));
+	gtk_box_set_spacing(GTK_BOX(area), 10);
+	char *msg = g_strdup_printf("Input the sequence for %s", what);
+	GtkWidget *l = gtk_label_new(msg);
+	g_free(msg);
+	gtk_widget_set_halign(l, GTK_ALIGN_CENTER);
+	gtk_box_pack_start(GTK_BOX(area), l, FALSE, FALSE, 0);
+
+	GtkWidget *e = gtk_entry_new();
+	gtk_entry_set_alignment(GTK_ENTRY(e), 0.5);
+	gtk_entry_set_width_chars(GTK_ENTRY(e), 30);
+	gtk_entry_set_text(GTK_ENTRY(e), *value);
+	gtk_entry_set_activates_default(GTK_ENTRY(e), TRUE);
+	g_signal_connect(e, "key-press-event", G_CALLBACK(on_sequence_key), NULL);
+	gtk_box_pack_start(GTK_BOX(area), e, FALSE, FALSE, 0);
+
+	GtkWidget *hint = gtk_label_new("Press the keys, or type them, e.g. Ctrl+Alt+Space");
+	gtk_style_context_add_class(gtk_widget_get_style_context(hint), "dim-label");
+	gtk_box_pack_start(GTK_BOX(area), hint, FALSE, FALSE, 0);
+	gtk_widget_show_all(box);
+	gtk_widget_grab_focus(e);
+
+	int resp = gtk_dialog_run(GTK_DIALOG(box));
+	if (resp == GTK_RESPONSE_ACCEPT || resp == GTK_RESPONSE_REJECT) {
+		char *t = resp == GTK_RESPONSE_ACCEPT ? g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(e)))) : g_strdup("");
+		if (resp == GTK_RESPONSE_ACCEPT && !t[0] && !quick) { // the first hotkey cannot be empty: it stays
+			g_free(t);
+		} else {
+			g_free(*value);
+			*value = t;
+			show_sequence(GTK_WIDGET(button), t);
+		}
+	}
+	gtk_widget_destroy(box);
 }
 
 static GtkWidget *label(const char *t) {
@@ -122,23 +186,24 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 	int r = 0;
 
 	// ---- capture
-	gtk_grid_attach(GTK_GRID(g), label("Hotkey"), 0, r, 1, 1);
-	w.hotkey = gtk_entry_new();
+	w.dlg = dlg;
+	w.hotkey_val = g_strdup(in->hotkey);
+	w.quick_val = g_strdup(in->quick_hotkey);
+
+	gtk_grid_attach(GTK_GRID(g), label("Add note hotkey"), 0, r, 1, 1);
+	w.hotkey = gtk_button_new();
+	show_sequence(w.hotkey, w.hotkey_val);
 	gtk_widget_set_hexpand(w.hotkey, TRUE);
-	gtk_entry_set_text(GTK_ENTRY(w.hotkey), in->hotkey);
-	gtk_entry_set_placeholder_text(GTK_ENTRY(w.hotkey), "click here, then press the combination");
-	gtk_editable_set_editable(GTK_EDITABLE(w.hotkey), FALSE);
-	g_signal_connect(w.hotkey, "key-press-event", G_CALLBACK(on_hotkey_key), NULL);
+	gtk_widget_set_tooltip_text(w.hotkey, "Click, then press the combination (or type it). It needs at least one modifier.");
+	g_signal_connect(w.hotkey, "clicked", G_CALLBACK(on_hotkey_button), &w);
 	gtk_grid_attach(GTK_GRID(g), w.hotkey, 1, r++, 1, 1);
 
-	gtk_grid_attach(GTK_GRID(g), label("Quick save"), 0, r, 1, 1);
-	w.quick = gtk_entry_new();
+	gtk_grid_attach(GTK_GRID(g), label("Quick note hotkey"), 0, r, 1, 1);
+	w.quick = gtk_button_new();
+	show_sequence(w.quick, w.quick_val);
 	gtk_widget_set_hexpand(w.quick, TRUE);
-	gtk_entry_set_text(GTK_ENTRY(w.quick), in->quick_hotkey);
-	gtk_entry_set_placeholder_text(GTK_ENTRY(w.quick), "off - click here, press a combination (Backspace clears)");
-	gtk_widget_set_tooltip_text(w.quick, "Stores the selected text at once, with no form and no tags. Does nothing when no text is selected.");
-	gtk_editable_set_editable(GTK_EDITABLE(w.quick), FALSE);
-	g_signal_connect(w.quick, "key-press-event", G_CALLBACK(on_quick_key), NULL);
+	gtk_widget_set_tooltip_text(w.quick, "Stores the selected text at once, with no form and no tags. Does nothing when no text is selected. Not set = off.");
+	g_signal_connect(w.quick, "clicked", G_CALLBACK(on_hotkey_button), &w);
 	gtk_grid_attach(GTK_GRID(g), w.quick, 1, r++, 1, 1);
 
 	gtk_grid_attach(GTK_GRID(g), label("Form size"), 0, r, 1, 1);
@@ -207,7 +272,7 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 	char *u = g_strdup_printf("%d note(s) not on the server yet", in->unsynced);
 	w.unsynced = label(u);
 	g_free(u);
-	w.send = gtk_button_new_with_label("Send them now");
+	w.send = gtk_button_new_with_label("Sync now");
 	gtk_box_pack_start(GTK_BOX(ub), w.send, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(ub), w.unsynced, FALSE, FALSE, 6);
 	gtk_grid_attach(GTK_GRID(w.remote_box), ub, 1, q++, 1, 1);
@@ -248,8 +313,8 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 		if (resp != GTK_RESPONSE_ACCEPT) break;
 		// a new hotkey is checked (and tried) before the window closes, so a
 		// combination another program owns is refused here, with a reason
-		const char *hk = gtk_entry_get_text(GTK_ENTRY(w.hotkey));
-		const char *qk = gtk_entry_get_text(GTK_ENTRY(w.quick));
+		const char *hk = w.hotkey_val;
+		const char *qk = w.quick_val;
 		if (strcmp(hk, in->hotkey) != 0) {
 			if (!act(&w, ACT_CHECK_HOTKEY, hk, qk, "", 0)) continue;
 		}
@@ -260,8 +325,8 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 		break;
 	}
 	if (saved) {
-		out->hotkey = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.hotkey)));
-		out->quick_hotkey = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.quick)));
+		out->hotkey = g_strdup(w.hotkey_val);
+		out->quick_hotkey = g_strdup(w.quick_val);
 		out->width = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(sw));
 		out->height = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(sh));
 		out->remote = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(w.remote));
@@ -270,6 +335,8 @@ int trecs_settings(const settings_in *in, settings_out *out) {
 		out->email = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.email)));
 		out->password = g_strdup(gtk_entry_get_text(GTK_ENTRY(w.password)));
 	}
+	g_free(w.hotkey_val);
+	g_free(w.quick_val);
 	gtk_widget_destroy(dlg);
 	flush_events();
 	return saved;

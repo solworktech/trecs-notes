@@ -40,10 +40,11 @@ static void set_status(browse *b, const char *text, int bad) {
 
 static void refresh_status(browse *b) {
 	char *r = act(B_STATUS, "", "", "", "", "");
-	// "attention \x1f text"; attention: there are changes to send
+	// "attention \x1f syncing-on \x1f text"; attention: there are changes to send
 	char *sep = strchr(r, '\x1f');
-	if (sep) { *sep = 0; set_status(b, sep + 1, r[0] == '1'); }
-	gtk_widget_set_sensitive(b->sync, r[0] == '1');
+	char *sep2 = sep ? strchr(sep + 1, '\x1f') : NULL;
+	if (sep2) { *sep2 = 0; set_status(b, sep2 + 1, r[0] == '1'); }
+	gtk_widget_set_sensitive(b->sync, sep && sep[1] == '1');
 	free(r);
 }
 
@@ -363,7 +364,7 @@ static void on_delete(GtkButton *x, gpointer d) { delete_note(d); }
 
 static void on_sync(GtkButton *x, gpointer d) {
 	browse *b = d;
-	set_status(b, "Sending...", 0);
+	set_status(b, "Syncing...", 0);
 	while (gtk_events_pending()) gtk_main_iteration();
 	char *r = act(B_SYNC, "", "", "", "", "");
 	set_status(b, r + 2, r[0] != '1');
@@ -486,7 +487,7 @@ int trecs_browse(const browse_in *in) {
 	gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(b->view), FALSE);
 	gtk_tree_view_set_enable_search(GTK_TREE_VIEW(b->view), FALSE);
 	add_column(b->view, "", COL_MARK, 0, "#d1423f", 28);
-	add_column(b->view, "Saved", COL_DATE, 0, "#7d8b99", 130);
+	add_column(b->view, "Created", COL_DATE, 0, "#7d8b99", 130);
 	add_column(b->view, "App", COL_APP, 0, "#3b78c4", 110);
 	add_column(b->view, "Note", COL_SNIP, 1, NULL, 0);
 	b->sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(b->view));
@@ -508,11 +509,13 @@ int trecs_browse(const browse_in *in) {
 	gtk_entry_set_placeholder_text(GTK_ENTRY(b->e_tags), "space or comma separated");
 	b->created = gtk_label_new("");
 	gtk_widget_set_halign(b->created, GTK_ALIGN_START);
-	labelled("Saved", b->created, grid, 3, NULL);
+	labelled("Created", b->created, grid, 3, NULL);
 	b->server = gtk_label_new("");
 	gtk_widget_set_halign(b->server, GTK_ALIGN_START);
-	labelled("Server", b->server, grid, 4, &b->server_label);
-	gtk_widget_set_no_show_all(b->server, TRUE); // shown only when syncing is on
+	gtk_label_set_line_wrap(GTK_LABEL(b->server), TRUE);
+	gtk_label_set_xalign(GTK_LABEL(b->server), 0);
+	labelled("Status", b->server, grid, 4, &b->server_label);
+	gtk_widget_set_no_show_all(b->server, TRUE); // shown when a note is
 	gtk_widget_set_no_show_all(b->server_label, TRUE);
 	gtk_box_pack_start(GTK_BOX(b->right), grid, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(b->right), trecs_note_area(&b->note, ""), TRUE, TRUE, 0);
@@ -533,8 +536,8 @@ int trecs_browse(const browse_in *in) {
 	b->status = gtk_label_new("");
 	gtk_widget_set_halign(b->status, GTK_ALIGN_START);
 	gtk_label_set_ellipsize(GTK_LABEL(b->status), PANGO_ELLIPSIZE_END);
-	b->sync = gtk_button_new_with_mnemonic("Sync to ser_ver");
-	gtk_widget_set_tooltip_text(b->sync, "Send the server what it has not seen: new notes, edits and deletions");
+	b->sync = gtk_button_new_with_mnemonic("_Sync");
+	gtk_widget_set_tooltip_text(b->sync, "Send the server what it has not seen (new notes, edits and deletions) and fetch what it has that this computer has not (notes made, edited or deleted on the website or elsewhere)");
 	gtk_box_pack_start(GTK_BOX(foot), b->status, TRUE, TRUE, 0);
 	gtk_box_pack_start(GTK_BOX(foot), b->del, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(foot), b->revert, FALSE, FALSE, 0);

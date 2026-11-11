@@ -63,3 +63,28 @@ func TestUpdateAndDeleteNote(t *testing.T) {
 		t.Fatalf("401: %v", err)
 	}
 }
+
+func TestNoteChangesSince(t *testing.T) {
+	var gotPath string
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RequestURI()
+		w.WriteHeader(status)
+		if status == http.StatusOK {
+			_, _ = w.Write([]byte(`{"changes":[{"seq":5,"note":{"id":"a","body":"x","tags":[],"created_at":1,"updated_at":2}},{"seq":6,"deleted":"b"}],"cursor":6,"more":true}`))
+		}
+	}))
+	defer srv.Close()
+	c := &Client{Server: srv.URL, Cookies: []Cookie{{Name: "s", Value: "v"}}}
+	got, err := c.NoteChangesSince(context.Background(), 4, 200)
+	if err != nil || gotPath != "/v1/sync/notes?since=4&limit=200" {
+		t.Fatalf("%v %s", err, gotPath)
+	}
+	if got.Cursor != 6 || !got.More || len(got.Changes) != 2 || got.Changes[0].Note.UpdatedAt != 2 || got.Changes[1].Deleted != "b" {
+		t.Fatalf("%+v", got)
+	}
+	status = http.StatusNotFound
+	if _, err := c.NoteChangesSince(context.Background(), 0, 10); !errors.Is(err, ErrSyncUnsupported) {
+		t.Errorf("%v", err)
+	}
+}

@@ -39,21 +39,26 @@ func ProblemText(err error) string {
 	return err.Error()
 }
 
-// SyncState says where a note stands with the server, for display; attention
-// is true when it needs the person's notice. "" when syncing is off.
-func (s *Service) SyncState(n model.Note) (text string, attention bool) {
-	if !s.Cfg.RemoteSyncEnabled {
-		return "", false
+// NoteStatus is the status line of one note: when it was last updated and
+// where it stands with the server ("last updated at Mon 9 Nov 2026 21:08,
+// synced on server."). attention is true when it needs the person's notice.
+func (s *Service) NoteStatus(n model.Note) (text string, attention bool) {
+	at := n.UpdatedAt
+	if at.IsZero() {
+		at = n.CreatedAt
 	}
+	text = "last updated at " + at.Format("Mon 2 Jan 2006 15:04") + ", "
 	switch {
+	case !s.Cfg.RemoteSyncEnabled:
+		return text + "remote sync is off.", false
 	case n.RemoteSyncError != "":
-		return "Not on the server: " + n.RemoteSyncError, true
+		return text + "not synced: " + n.RemoteSyncError + ".", true
 	case n.RemoteID == "":
-		return "Not on the server yet", true
+		return text + "not on the server yet.", true
 	case n.Dirty:
-		return "Edited here; the server has the old text", true
+		return text + "edited here, not synced yet.", true
 	}
-	return "On the server", false
+	return text + "synced on server.", false
 }
 
 // Unsent reports whether a list should mark the note as not (fully) sent.
@@ -66,11 +71,14 @@ func (s *Service) Unsent(n model.Note) bool {
 func (s *Service) StatusLine() (text string, attention bool) {
 	total, _ := s.DB.Count()
 	text = fmt.Sprintf("%d notes", total)
+	if total == 1 {
+		text = "1 note"
+	}
 	if !s.Cfg.RemoteSyncEnabled {
-		return text + "   Syncing is off", false
+		return text + ", remote sync is off", false
 	}
 	if n := s.PendingChanges(); n > 0 {
-		return text + fmt.Sprintf("   Syncing is on: %d change(s) not sent yet", n), true
+		return text + fmt.Sprintf(", remote sync is on, %d change(s) not sent yet", n), true
 	}
-	return text + "   Syncing is on: everything is sent", false
+	return text + ", remote sync is on", false
 }

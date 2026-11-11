@@ -156,10 +156,12 @@ func Logout() Reply {
 	return Reply{Message: "Logged out. The stored password was removed.", LoginStatus: LoginStatus(), OK: true}
 }
 
-// SendUnsynced sends the notes the server does not have yet.
-func SendUnsynced(db *localdb.DB) Reply {
-	sent, failed, lastErr := remote.SendUnsynced(db, 500)
-	return Reply{Message: remote.Describe(sent, failed, lastErr), OK: failed == 0}
+// SyncNow syncs both ways: sends what the server has not seen, then takes in
+// what it has that this machine has not (notes edited or deleted on the
+// website or on another machine).
+func SyncNow(db *localdb.DB) Reply {
+	sent, failed, pulled, lastErr := remote.Sync(db)
+	return Reply{Message: remote.DescribeSync(sent, failed, pulled, lastErr), OK: failed == 0}
 }
 
 func firstNonEmpty(s ...string) string {

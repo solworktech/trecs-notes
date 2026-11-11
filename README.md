@@ -60,7 +60,7 @@ The tray icon uses the StatusNotifier (AppIndicator) protocol. KDE, XFCE, Cinnam
 
 ### Quick save
 
-A second hotkey (`Ctrl+Alt+Shift+Space` by default) stores the selected text at once: no form, so no tags. It uses the same capture as the first hotkey. If no text is selected, nothing happens and nothing is stored. Set it in **Settings** (**Quick save**); press Backspace in that box to turn it off. Without a global hotkey (Wayland), bind `trecs-notes quick` instead. Quick saves are synced like any other note when syncing is on.
+A second hotkey (`Ctrl+Alt+Shift+Space` by default) stores the selected text at once: no form, so no tags. It uses the same capture as the first hotkey. If no text is selected, nothing happens and nothing is stored. Set it in **Settings** (**Quick note hotkey**); **Turn off** in its box clears it. Without a global hotkey (Wayland), bind `trecs-notes quick` instead. Quick saves are synced like any other note when syncing is on.
 
 The tray menu has **Settings**, **Browse notes** and **Quit**. Quitting also closes an open form.
 
@@ -78,8 +78,8 @@ Tags are lowercase letters, digits and single hyphens, 2 to 32 characters, at mo
 
 | Setting | What it does |
 |---|---|
-| Hotkey | Click the field and press the combination you want. It needs at least one modifier. A combination another program already holds is refused with a message. Changing it restarts the app. |
-| Quick save | The hotkey that stores the selection without showing the form. Set the same way; Backspace empties it, which turns it off. It has to differ from the Hotkey. |
+| Add note hotkey | A button showing the combination. Click it and a box asks you to input the sequence: press the combination you want, or type it (`Ctrl+Alt+Space`). It needs at least one modifier. A combination another program already holds is refused with a message when you save. Changing it restarts the app. (In the terminal interface it is a text field: type the sequence.) |
+| Quick note hotkey | The hotkey that stores the selection without showing the form. Set the same way; **Turn off** in its box clears it ("Not set"). It has to differ from the Add note hotkey. |
 | Form size | The capture form's width and height, in pixels. |
 | Try copying | For applications that do not report their selection, send the copy shortcut as a last resort. Off by default; see [How it works](#how-it-works). |
 | Also save notes to a trecs server | Turns on [syncing](#syncing-to-a-trecs-server). |
@@ -105,17 +105,19 @@ The terminal interface has no capture form: capturing needs the desktop. It open
 
 Searching is as you type. Words are whole words, all of which must appear (the last may be a beginning, so `kube` finds `kubectl` while you are still typing); `"a phrase"` keeps words together; `tag:k8s`, `app:firefox`, `since:2026-01-31` and `until:2026-02-28` narrow the notes first. The text, the app name and the window title are all searched. **Regex** (Alt+R, off to begin with) makes the rest of the text a regular expression; **Match case** (Alt+I) works as in `trecs-edit`: off, case counts only if the text has a capital. The words are looked up in a full-text index, so they are fast on a large database; regular expressions read the notes themselves (from memory, once loaded) and results appear as they are found.
 
-**^E** edits the note's app, window title, tags and text (in the Text box, **^E** opens the text in `$VISUAL` or `$EDITOR`); **Del** deletes it, after asking. **F2** is Settings, which edits the same `config.json` as the graphical Settings window (minus the form size), including logging in; **F5** sends to the server what it has not seen. The hotkeys belong to the tray app, which watches the config file and restarts itself when they change.
+**^E** edits the note's app, window title, tags and text (in the Text box, **^E** opens the text in `$VISUAL` or `$EDITOR`); **Del** deletes it, after asking. **F2** is Settings, which edits the same `config.json` as the graphical Settings window (minus the form size), including logging in; **F5** syncs with the server, both ways (see below). The hotkeys belong to the tray app, which watches the config file and restarts itself when they change.
 
 ## Syncing to a Trecs server
 
-With the option on, every saved note is also sent to the server you are logged in to, under your account, with its tags and the time you took it. Notes taken while offline, or while the server was unreachable, stay in the local database marked as unsent; **Send them now** in Settings (or the next successful sync) sends them.
+With the option on, every saved note is also sent to the server you are logged in to, under your account, with its tags and the time you took it. Notes taken while offline, or while the server was unreachable, stay in the local database marked as unsent; **Sync now** in Settings (or the next successful sync) sends them.
 
 The login works like `trecs login`. The email is kept in `config.json`. The password is kept in the system keyring (the macOS Keychain, the Windows Credential Manager, or the Secret Service - GNOME Keyring, KWallet - on Linux). If there is no keyring, it is kept in a file in the data folder that only you can read, **as plain text**; the Settings window tells you when that happens. When a session lapses, the stored login renews it. **Log out** removes the stored password.
 
-Edits and deletions are synced too: an edited note is sent again (the server's copy is replaced, its creation time kept), and a note you delete is deleted there. If the server is unreachable, or you are logged out, they wait, and go with the next sync (**F5** in the terminal interface, **Send them now** in Settings).
+Edits and deletions are synced too: an edited note is sent again (the server's copy is replaced, its creation time kept), and a note you delete is deleted there. If the server is unreachable, or you are logged out, they wait, and go with the next sync (**F5** in the terminal interface, **Sync** in the notes window, **Sync now** in Settings).
 
-Syncing needs a server that has the notes endpoints (`/v1/notes`, and `PUT` and `DELETE /v1/notes/{id}` for edits and deletions).
+Sync goes **both ways**. Notes you make, edit or delete on the Trecs website, or with trecs-notes on another computer, come to this one: the notes window and the terminal interface fetch them when they open, then every minute while they are open, and on **Sync**. Each note records when it was last edited (`updated_at`); where the same note was edited in two places, the later edit wins, and the other is replaced. A note edited here and deleted on the server is not lost: the edit wins and the note is sent again as a new one. A note you deleted here stays deleted. Notes taken with the capture hotkey are sent at once, as before, but are not fetched until a window next opens or you sync.
+
+Syncing needs a server that has the notes endpoints (`/v1/notes`, `PUT` and `DELETE /v1/notes/{id}` for edits and deletions, and `GET /v1/sync/notes` for fetching changes). Against an older server, sending works and fetching says the server needs an upgrade.
 
 ## Where things are stored
 
