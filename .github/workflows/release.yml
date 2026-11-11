@@ -62,17 +62,19 @@ jobs:
         run: |
           # .goreleaser.yaml says `goarch: [amd64]`. GoReleaser takes no
           # template there, and cgo needs a native build, so this runner
-          # swaps in arm64. \s* keeps it working if the indentation or the
-          # spacing in that line ever changes.
-          sed -i 's/^\(\s*\)goarch:\s*\[amd64\]\s*$/\1goarch: [arm64]/' \
-            .goreleaser.yaml
+          # uses a copy with arm64 swapped in. The copy lives outside the
+          # checkout: editing the tracked file itself leaves git dirty,
+          # and GoReleaser refuses to release from a dirty tree. \s* keeps
+          # it working if the indentation or spacing of that line changes.
+          sed 's/^\(\s*\)goarch:\s*\[amd64\]\s*$/\1goarch: [arm64]/' \
+            .goreleaser.yaml > "$RUNNER_TEMP/goreleaser-arm64.yaml"
           # show the result in the log, and fail if nothing changed
-          grep -n 'goarch' .goreleaser.yaml
-          grep -q 'goarch: \[arm64\]' .goreleaser.yaml
+          grep -n 'goarch' "$RUNNER_TEMP/goreleaser-arm64.yaml"
+          grep -q 'goarch: \[arm64\]' "$RUNNER_TEMP/goreleaser-arm64.yaml"
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --clean --config ${{ runner.temp }}/goreleaser-arm64.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

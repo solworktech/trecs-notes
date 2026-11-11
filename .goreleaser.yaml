@@ -14,7 +14,7 @@ version: 2
 #   RHEL 9 and newer). Built on Ubuntu 24.04 it would require glibc 2.34+
 #   symbols from a newer toolchain and fail on older systems.
 #   Each architecture is built on a machine of that architecture; the
-#   workflow rewrites the goarch line below to arm64 on the arm64 runner.
+#   workflow uses a copy with the goarch line below set to arm64 on the arm64 runner.
 #   Locally:   goreleaser release --snapshot --clean
 project_name: trecs-notes
 
@@ -24,7 +24,7 @@ builds:
     binary: trecs-notes
     env: [CGO_ENABLED=1]
     goos: [linux]
-    # One architecture per machine (cgo); release.yml changes this to arm64.
+    # One architecture per machine (cgo); release.yml uses a copy with arm64 here.
     goarch: [amd64]
     ldflags:
       - -s -w
