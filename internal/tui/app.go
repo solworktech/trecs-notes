@@ -159,6 +159,8 @@ func (a *app) handleInput(ev *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		return ev // the modal handles the rest
+	case secretsPage:
+		return ev // the modal handles it, Escape included
 	case confirmPage:
 		if ev.Key() == tcell.KeyEscape {
 			a.pages.RemovePage(confirmPage)

@@ -121,16 +121,44 @@ func (m *editModal) save() {
 	n.WindowTitle = strings.TrimSpace(m.input(lblTitle))
 	n.Tags = model.SplitTagInput(m.input(lblTags))
 	n.Text = m.form.GetFormItemByLabel(lblText).(*tview.TextArea).GetText()
+	// A secret in the text that the stored note did not hold is put to the
+	// person first (a secret it did hold has been seen and kept already).
+	if found := m.a.svc.FindSecrets(n.Text, m.note.Text); len(found) > 0 {
+		m.a.askSecrets(found, func(c notes.SecretChoice) {
+			switch c {
+			case notes.SecretMask:
+				n.Text = notes.MaskSecrets(n.Text, found)
+				m.commit(n, len(found))
+			case notes.SecretKeep:
+				m.commit(n, 0)
+			default:
+				m.message.SetText("[" + dim + "]Not saved: the text holds secrets. Edit it, or save again.")
+				m.focus()
+			}
+		})
+		return
+	}
+	m.commit(n, 0)
+}
+
+// commit stores the edited note; masked is how many secrets were masked in
+// its text, to say so.
+func (m *editModal) commit(n model.Note, masked int) {
 	if err := m.a.svc.Update(n); err != nil {
 		msg := err.Error()
 		if err == notes.ErrEmptyNote {
 			msg = "A note needs some text."
 		}
 		m.message.SetText("[" + warn + "]" + tview.Escape(msg))
+		m.focus()
 		return
 	}
 	m.close()
 	m.a.browse.afterChange(n.ID)
+	if masked > 0 {
+		m.a.say(notes.SecretsMasked(masked))
+		return
+	}
 	m.a.say("Note saved.")
 }
 

@@ -106,8 +106,12 @@ func RunBrowse() int {
 			}
 			old.AppName, old.WindowTitle, old.Text = n.App, n.Title, n.Text
 			old.Tags = model.SplitTagInput(n.Tags)
-			if err := svc.Update(old); err != nil {
+			masked, err := svc.UpdateChecked(old, askSecrets)
+			if err != nil {
 				return "", err
+			}
+			if masked > 0 {
+				return notes.SecretsMasked(masked), nil
 			}
 			return "Note saved.", nil
 		},

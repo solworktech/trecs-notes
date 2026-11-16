@@ -92,3 +92,23 @@ func osascript(script string) (string, error) {
 	}
 	return strings.TrimRight(out.String(), "\n"), err
 }
+
+// askSecrets on macOS: one dialog with three buttons (osascript lists them
+// left to right; the cancel button answers with the "User canceled" error).
+func askSecrets(msg string) (SecretChoice, error) {
+	script := fmt.Sprintf(`button returned of (display dialog %s with title "Trecs Notes" with icon caution buttons {"Cancel", "Save as is", "Mask and save"} default button "Mask and save" cancel button "Cancel")`, asQuoted(msg))
+	out, err := osascript(script)
+	if cancelled(err) {
+		return SecretCancel, nil
+	}
+	if err != nil {
+		return SecretCancel, err
+	}
+	switch out {
+	case "Mask and save":
+		return SecretMask, nil
+	case "Save as is":
+		return SecretKeep, nil
+	}
+	return SecretCancel, nil
+}

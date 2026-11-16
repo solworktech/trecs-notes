@@ -150,3 +150,23 @@ func runPowerShell(script string) (string, error) {
 	err = runTracked(cmd)
 	return out.String(), err
 }
+
+// askSecrets on Windows: a message box with Yes, No and Cancel, which the
+// text says the meaning of (a message box cannot have buttons of its own).
+func askSecrets(msg string) (SecretChoice, error) {
+	msg += "\n\nYes: mask them and save.\nNo: save the note as it is.\nCancel: do not save."
+	script := "Add-Type -AssemblyName System.Windows.Forms\n" +
+		"$r = [System.Windows.Forms.MessageBox]::Show(" + psQuote(msg) + ", 'Trecs Notes', 'YesNoCancel', 'Warning', 'Button1')\n" +
+		"Write-Output $r\n"
+	out, err := runPowerShell(script)
+	if err != nil {
+		return SecretCancel, err
+	}
+	switch strings.TrimSpace(out) {
+	case "Yes":
+		return SecretMask, nil
+	case "No":
+		return SecretKeep, nil
+	}
+	return SecretCancel, nil
+}

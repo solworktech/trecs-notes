@@ -112,6 +112,11 @@ type Config struct {
 	// the person turns it on: it types into their windows.
 	CopyFallback bool `json:"copy_fallback"`
 
+	// SecretCheck looks for passwords, keys and tokens in a note before it is
+	// saved, and asks whether to mask them. On unless set to false here: the
+	// Settings windows do not show it.
+	SecretCheck bool `json:"secret_check"`
+
 	// RemoteSyncEnabled turns on the optional second copy in the trecs DB.
 	// When true, every save dual-writes: local SQLite always happens
 	// first and is never blocked by the remote call failing.
@@ -128,7 +133,7 @@ type Config struct {
 }
 
 func defaults() Config {
-	return Config{Hotkey: DefaultHotkey, QuickHotkey: DefaultQuickHotkey, Width: DefaultWidth, Height: DefaultHeight}
+	return Config{Hotkey: DefaultHotkey, QuickHotkey: DefaultQuickHotkey, Width: DefaultWidth, Height: DefaultHeight, SecretCheck: true}
 }
 
 // Load reads the saved config, or returns the defaults if none has been

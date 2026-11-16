@@ -11,3 +11,5 @@ func ShowSettings(d SettingsData, h SettingsHandler) (SettingsResult, error) {
 }
 
 func ShowBrowse(sz BrowseSize, h BrowseHandler) error { return errGTKUnavailable }
+
+func runGTKSecrets(msg string) (SecretChoice, error) { return SecretCancel, errGTKUnavailable }

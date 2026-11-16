@@ -79,16 +79,46 @@ func (s *Service) Save(note model.Note) error {
 }
 
 // QuickSave stores what a capture found, with no tags. It reports false, and
-// stores nothing, when the capture holds no text.
-func (s *Service) QuickSave(snap capture.Snapshot) (stored bool, err error) {
+// stores nothing, when the capture holds no text. A text that holds secrets
+// is put to ask first (see CheckSecrets): masked is how many were masked, and
+// ErrDeclined means the person said not to save.
+func (s *Service) QuickSave(snap capture.Snapshot, ask SecretAsker) (stored bool, masked int, err error) {
 	note, ok := snap.QuickNote()
 	if !ok {
-		return false, nil
+		return false, 0, nil
+	}
+	if note.Text, masked, err = s.CheckSecrets(note.Text, "", ask); err != nil {
+		return false, 0, err
 	}
 	if err := s.Save(note); err != nil {
-		return false, err
+		return false, 0, err
 	}
-	return true, nil
+	return true, masked, nil
+}
+
+// SaveChecked is Save after the question about secrets; masked is how many
+// were masked.
+func (s *Service) SaveChecked(note model.Note, ask SecretAsker) (masked int, err error) {
+	if note.Text, masked, err = s.CheckSecrets(note.Text, "", ask); err != nil {
+		return 0, err
+	}
+	return masked, s.Save(note)
+}
+
+// UpdateChecked is Update after the question about secrets. Only a secret
+// that the stored note did not already hold is asked about.
+func (s *Service) UpdateChecked(note model.Note, ask SecretAsker) (masked int, err error) {
+	if strings.TrimSpace(note.Text) == "" {
+		return 0, ErrEmptyNote
+	}
+	var previous string
+	if old, err := s.DB.Get(note.ID); err == nil {
+		previous = old.Text
+	}
+	if note.Text, masked, err = s.CheckSecrets(note.Text, previous, ask); err != nil {
+		return 0, err
+	}
+	return masked, s.Update(note)
 }
 
 // Get returns one stored note.

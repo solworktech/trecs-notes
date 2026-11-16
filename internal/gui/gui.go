@@ -6,6 +6,7 @@
 package gui
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -185,12 +186,14 @@ func (a *app) doQuickSave() {
 	for _, w := range snap.Warnings {
 		log.Printf("capture: %s", w)
 	}
-	stored, err := a.QuickSave(snap)
+	stored, masked, err := a.QuickSave(snap, askSecrets)
 	switch {
 	case err != nil:
 		log.Printf("quick save: %v", err)
 	case !stored:
 		log.Printf("quick save: no selected text, nothing stored")
+	case masked > 0:
+		log.Printf("quick save: stored %d characters from %q, %d secret(s) masked", len(snap.SelectedText), snap.AppName, masked)
 	default:
 		log.Printf("quick save: stored %d characters from %q", len(snap.SelectedText), snap.AppName)
 	}
@@ -226,13 +229,22 @@ func (a *app) doCapture() {
 		// entirely over a tag typo; the person can fix tags later.
 		tags = nil
 	}
-	if err := a.Save(model.Note{
+	// A note that holds a secret is put to the person first: masked, as it
+	// is, or not at all. A cancelled capture has been seen by the person, so
+	// that is not an error to log.
+	masked, err := a.SaveChecked(model.Note{
 		AppName:     result.AppName,
 		WindowTitle: result.WindowTitle,
 		Text:        result.Text,
 		Tags:        tags,
-	}); err != nil {
+	}, askSecrets)
+	switch {
+	case errors.Is(err, notes.ErrDeclined):
+		log.Printf("capture: not saved, at your request (the note held secrets)")
+	case err != nil:
 		log.Printf("saving note: %v", err)
+	case masked > 0:
+		log.Printf("capture: saved, %d secret(s) masked", masked)
 	}
 }
 

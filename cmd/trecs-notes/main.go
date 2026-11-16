@@ -79,6 +79,8 @@ func main() {
 		gui.RunOneCapture(true)
 	case "dialog": // internal: the capture form, run as a child process (see internal/ui)
 		os.Exit(gui.RunDialog())
+	case "secrets-dialog": // internal: the question about secrets in a note, run as a child process
+		os.Exit(gui.RunSecretsDialog())
 	case "settings": // internal: the Settings window, run as a child process
 		os.Exit(gui.RunSettings())
 	case "browse": // internal: the notes window, run as a child process

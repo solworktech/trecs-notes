@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -205,4 +206,103 @@ func run(name string, args ...string) (string, error) {
 	cmd.Stdout = &out
 	err := runTracked(cmd)
 	return out.String(), err
+}
+
+// RunSecretsProcess is the body of `trecs-notes secrets-dialog`: the question
+// is read from stdin, and the answer ("mask", "keep" or "cancel") is written
+// to stdout. Like the capture form it runs as a child process, so GTK stays
+// out of the tray process; exit code 2 means GTK could not start.
+func RunSecretsProcess() int {
+	msg, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "secrets-dialog:", err)
+		return 1
+	}
+	c, err := runGTKSecrets(string(msg))
+	if errors.Is(err, errGTKUnavailable) {
+		return 2
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "secrets-dialog:", err)
+		return 1
+	}
+	fmt.Println(secretWords[c])
+	return 0
+}
+
+var secretWords = map[SecretChoice]string{SecretCancel: "cancel", SecretMask: "mask", SecretKeep: "keep"}
+
+func askSecrets(msg string) (SecretChoice, error) {
+	c, err := askSecretsGTK(msg)
+	if !errors.Is(err, errGTKUnavailable) {
+		return c, err
+	}
+	if commandExists("yad") {
+		return askSecretsYad(msg)
+	}
+	if commandExists("zenity") {
+		return askSecretsZenity(msg)
+	}
+	return SecretCancel, fmt.Errorf("neither yad nor zenity is installed, and GTK could not start")
+}
+
+func askSecretsGTK(msg string) (SecretChoice, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return SecretCancel, errGTKUnavailable
+	}
+	cmd := exec.Command(exe, "secrets-dialog")
+	cmd.Stdin = strings.NewReader(msg)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+	if err := runTracked(cmd); err != nil {
+		if exitCode(err) == 2 {
+			return SecretCancel, errGTKUnavailable
+		}
+		return SecretCancel, err
+	}
+	switch strings.TrimSpace(out.String()) {
+	case "mask":
+		return SecretMask, nil
+	case "keep":
+		return SecretKeep, nil
+	}
+	return SecretCancel, nil
+}
+
+// markup escapes text for yad and zenity, whose --text is Pango markup.
+func markup(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+}
+
+func askSecretsYad(msg string) (SecretChoice, error) {
+	_, err := run("yad", "--title=Trecs Notes", "--image=dialog-warning", "--text="+markup(msg), "--width=480",
+		"--button=Mask and save:0", "--button=Save as is:2", "--button=Cancel:1")
+	switch exitCode(err) {
+	case 0:
+		return SecretMask, nil
+	case 2:
+		return SecretKeep, nil
+	case 1, 252: // Cancel, or the window closed
+		return SecretCancel, nil
+	}
+	return SecretCancel, err
+}
+
+// askSecretsZenity: a question dialog has two buttons, so "Save as is" is an
+// extra button, which zenity answers by printing its label and exiting 1.
+func askSecretsZenity(msg string) (SecretChoice, error) {
+	out, err := run("zenity", "--question", "--title=Trecs Notes", "--text="+markup(msg), "--width=480",
+		"--ok-label=Mask and save", "--cancel-label=Cancel", "--extra-button=Save as is")
+	if err == nil {
+		return SecretMask, nil
+	}
+	if strings.Contains(out, "Save as is") {
+		return SecretKeep, nil
+	}
+	if exitCode(err) == 1 {
+		return SecretCancel, nil
+	}
+	return SecretCancel, err
 }

@@ -28,6 +28,9 @@ int trecs_form(const char *app, const char *title, const char *text,
                const unsigned char *icon, int iconlen,
                char **o_app, char **o_title, char **o_tags, char **o_text);
 
+// The secrets question (gtk_secrets.c): 1 = mask, 2 = keep, 0 = cancel, -1 = GTK could not start.
+int trecs_secrets(const char *msg);
+
 typedef struct {
 	const char *hotkey, *quick_hotkey;
 	int width, height;

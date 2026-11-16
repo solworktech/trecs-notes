@@ -64,6 +64,18 @@ A second hotkey (`Ctrl+Alt+Shift+Space` by default) stores the selected text at 
 
 The tray menu has **Settings**, **Browse notes** and **Quit**. Quitting also closes an open form.
 
+### Secrets
+
+Before a note is stored, its text is checked for passwords, API keys, tokens and private keys, with the same [gitleaks](https://github.com/gitleaks/gitleaks) rules `trecs` uses on recordings. If it finds any, a question lists them (the kind, the line, and the first and last few characters, never the whole secret) and offers three answers:
+
+- **Mask and save** replaces each secret in the note with `[masked: kind]`, for example `[masked: github-pat]`, and saves that.
+- **Save as is** stores the note unchanged.
+- **Cancel** stores nothing. In the capture form that means the note is dropped; in the notes window, the edit stays open and unsaved.
+
+It applies to the capture form, the quick save, and editing a note in the notes window or the terminal interface. When you edit a note, only a secret that was not in the stored text is asked about, so a note you kept with a secret does not ask again each time you fix a tag. If the question cannot be shown (no dialog tool, no display), the secrets are masked and the note is saved, and the reason is logged. Notes that come from the server are not checked.
+
+To turn the check off, set `"secret_check": false` in `config.json`. The Settings window does not show it.
+
 ### Raw and Markdown
 
 The note area has two tabs. **Raw** is the text you edit; it is coloured as you type, using the [gohighlight](https://github.com/jessp01/gohighlight) syntax definitions. The language is guessed from the window title (`main.go - editor`), a `#!` line or the content, and the **Syntax** button at the right of the tabs shows the guess ("Auto (go)"). If the note starts with a code fence (` ```go `), that language is selected. Click the box to search the list and pick another language, or *None*, to override it. **Markdown** shows the same text rendered: headings, bold, italic, strikethrough, inline code, links, quotes, lists, task lists, tables and fenced code blocks (coloured by their language tag).
