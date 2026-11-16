@@ -162,7 +162,8 @@ func (s *Service) ExportCSV(ctx context.Context, q Query, path string, overwrite
 		return 0, err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return 0, err
+		// on Windows this is what a file open in another program (Excel) gives
+		return 0, fmt.Errorf("cannot write %s (is it open in another program?): %w", path, err)
 	}
 	done = true
 	return count, nil

@@ -1,11 +1,13 @@
 package notes
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +29,7 @@ func TestResolveExportPath(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // where Windows looks for it
 	dir := filepath.Join(cfg, "trecs", "notes")
 	folder := t.TempDir()
 	for _, c := range []struct{ in, want string }{
@@ -108,12 +111,12 @@ func TestExportCSVWritesWhatTheSearchFinds(t *testing.T) {
 	if err != nil || n != 2 {
 		t.Fatalf("%d, %v", n, err)
 	}
-	f, err := os.Open(out)
+	// read it whole and let go of it: Windows will not replace a file that is open
+	data, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = f.Close() }()
-	rows, err := csv.NewReader(f).ReadAll()
+	rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
 	if err != nil || len(rows) != 3 || rows[0][0] != "id" {
 		t.Fatalf("%v %q", err, rows)
 	}
@@ -125,7 +128,7 @@ func TestExportCSVWritesWhatTheSearchFinds(t *testing.T) {
 			t.Errorf("formula left live: %q", r[6])
 		}
 	}
-	if st, _ := os.Stat(out); st.Mode().Perm() != 0o600 {
+	if st, _ := os.Stat(out); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 { // Windows has no such bits
 		t.Errorf("mode %v", st.Mode().Perm())
 	}
 
