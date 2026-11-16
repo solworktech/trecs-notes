@@ -46,6 +46,11 @@ type BrowseHandler struct {
 	Changed func() bool
 	// Tags lists the tags in use, for completion.
 	Tags func() []string
+	// ExportDefault is the folder and the file name the export dialog offers.
+	ExportDefault func() (dir, name string)
+	// Export writes the notes that the search (as the window has it) finds to
+	// path as CSV, replacing a file there (the dialog has asked about that).
+	Export func(text string, regex, matchCase bool, path string) (message string, err error)
 }
 
 // BrowseSize is the window's size (0: the default).

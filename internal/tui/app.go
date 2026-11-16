@@ -29,6 +29,7 @@ type app struct {
 
 	settings *settingsModal
 	edit     *editModal
+	export   *exportModal
 	modal    string // the modal that is open: settingsPage, helpPage, editPage, confirmPage, or ""
 	helpBack string // the page the help was opened from
 	msg      string // what the status line says, until the person does something else
@@ -42,6 +43,7 @@ func Run(s *notes.Service) error {
 		legendItem{"^E", "Edit", 1},
 		legendItem{"Del", "Delete", 2},
 		legendItem{"F3", "Raw/Markdown", 4},
+		legendItem{"F4", "Export", 4},
 		legendItem{"F2", "Settings", 3},
 		legendItem{"F5", "Sync", 5},
 		legendItem{"Q", "Quit", 2},
@@ -58,6 +60,7 @@ func Run(s *notes.Service) error {
 	a.pages = tview.NewPages().AddPage(mainPage, main, true, true)
 	a.settings = newSettingsModal(a)
 	a.edit = newEditModal(a)
+	a.export = newExportModal(a)
 
 	a.tv.SetInputCapture(a.handleInput)
 	a.tv.SetFocus(a.browse.list)
@@ -159,7 +162,7 @@ func (a *app) handleInput(ev *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		return ev // the modal handles the rest
-	case secretsPage:
+	case secretsPage, exportPage:
 		return ev // the modal handles it, Escape included
 	case confirmPage:
 		if ev.Key() == tcell.KeyEscape {
@@ -182,6 +185,9 @@ func (a *app) handleInput(ev *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case tcell.KeyF3:
 		b.toggleMarkdown()
+		return nil
+	case tcell.KeyF4:
+		a.export.open()
 		return nil
 	case tcell.KeyF5:
 		a.syncNow()
@@ -295,6 +301,7 @@ func helpRows(page string) (title string, rows []helpRow) {
 		{"^E", "Edit the selected note"},
 		{"Del", "Delete the selected note (it asks first)"},
 		{"F3", "Show the note as Raw text or as Markdown"},
+		{"F4", "Export the notes shown (the search as it is now, all of its matches) to a CSV file; the default is notes_DD_MM_YYYY.csv in the notes folder, and you can change it"},
 		{"F5", "Sync both ways: send what the server has not seen, fetch what it has that this computer has not (when syncing is on)"},
 		{"F2", "Settings"},
 		{"Esc", "Clear Find, or go back to the list"},

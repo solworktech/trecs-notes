@@ -8,12 +8,12 @@
 // can be edited in place. What a search finds, what a note says and what saving
 // does are Go's (internal/notes); this is the window.
 
-enum { B_SEARCH = 1, B_GET = 2, B_SAVE = 3, B_DELETE = 4, B_SYNC = 5, B_STATUS = 6, B_POLL = 7, B_TAGS = 8 };
+enum { B_SEARCH = 1, B_GET = 2, B_SAVE = 3, B_DELETE = 4, B_SYNC = 5, B_STATUS = 6, B_POLL = 7, B_TAGS = 8, B_EXPDEF = 9, B_EXPORT = 10 };
 enum { COL_ID, COL_MARK, COL_DATE, COL_APP, COL_SNIP, NCOLS };
 
 typedef struct {
 	GtkWidget *win, *find, *regex, *mcase, *info, *view, *status, *sync;
-	GtkWidget *e_app, *e_title, *e_tags, *save, *revert, *del, *right, *created, *server, *server_label;
+	GtkWidget *e_app, *e_title, *e_tags, *save, *export, *revert, *del, *right, *created, *server, *server_label;
 	GtkListStore *store;
 	GtkTreeSelection *sel;
 	note_ctx note;
@@ -373,6 +373,43 @@ static void on_sync(GtkButton *x, gpointer d) {
 	start_search(b);
 }
 
+// Exports the notes the list shows (the same search, without the list's cap) as CSV.
+static void on_export(GtkButton *x, gpointer d) {
+	browse *b = d;
+	char *def = act(B_EXPDEF, "", "", "", "", "");
+	gchar **p = g_strsplit(def, "\x1f", 2);
+	GtkWidget *dlg = gtk_file_chooser_dialog_new("Export the notes shown", GTK_WINDOW(b->win),
+		GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL, "_Export", GTK_RESPONSE_ACCEPT, NULL);
+	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dlg), TRUE);
+	if (g_strv_length(p) == 2) {
+		if (p[0][0]) gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dlg), p[0]);
+		gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dlg), p[1]);
+	}
+	GtkFileFilter *csv = gtk_file_filter_new();
+	gtk_file_filter_set_name(csv, "CSV files");
+	gtk_file_filter_add_pattern(csv, "*.csv");
+	gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dlg), csv);
+	GtkFileFilter *all = gtk_file_filter_new();
+	gtk_file_filter_set_name(all, "All files");
+	gtk_file_filter_add_pattern(all, "*");
+	gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dlg), all);
+	char *path = NULL;
+	if (gtk_dialog_run(GTK_DIALOG(dlg)) == GTK_RESPONSE_ACCEPT)
+		path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dlg));
+	gtk_widget_destroy(dlg);
+	g_strfreev(p);
+	free(def);
+	if (!path) return;
+	set_status(b, "Exporting...", 0);
+	while (gtk_events_pending()) gtk_main_iteration();
+	char *r = act(B_EXPORT, gtk_entry_get_text(GTK_ENTRY(b->find)),
+		gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b->regex)) ? "1" : "0",
+		gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(b->mcase)) ? "1" : "0", path, "");
+	set_status(b, r + 2, r[0] != '1');
+	free(r);
+	g_free(path);
+}
+
 static gboolean on_view_key(GtkWidget *w, GdkEventKey *e, gpointer d) {
 	if (e->keyval == GDK_KEY_Delete || e->keyval == GDK_KEY_KP_Delete) {
 		delete_note(d);
@@ -522,6 +559,8 @@ int trecs_browse(const browse_in *in) {
 	b->del = gtk_button_new_with_mnemonic("_Delete");
 	b->revert = gtk_button_new_with_mnemonic("Re_vert");
 	b->save = gtk_button_new_with_mnemonic("_Save");
+	b->export = gtk_button_new_with_mnemonic("_Export");
+	gtk_widget_set_tooltip_text(b->export, "Save the notes in the list, as it is now filtered, to a CSV file");
 	gtk_style_context_add_class(gtk_widget_get_style_context(b->save), "suggested-action");
 	gtk_style_context_add_class(gtk_widget_get_style_context(b->del), "destructive-action");
 
@@ -542,6 +581,7 @@ int trecs_browse(const browse_in *in) {
 	gtk_box_pack_start(GTK_BOX(foot), b->del, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(foot), b->revert, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(foot), b->save, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(foot), b->export, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(foot), gtk_separator_new(GTK_ORIENTATION_VERTICAL), FALSE, FALSE, 4);
 	gtk_box_pack_start(GTK_BOX(foot), b->sync, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(top), foot, FALSE, FALSE, 0);
@@ -566,6 +606,7 @@ int trecs_browse(const browse_in *in) {
 	g_signal_connect(gtk_text_view_get_buffer(GTK_TEXT_VIEW(b->note.raw)), "changed", G_CALLBACK(on_edited), b);
 	g_signal_connect(b->save, "clicked", G_CALLBACK(on_save), b);
 	g_signal_connect(b->revert, "clicked", G_CALLBACK(on_revert), b);
+	g_signal_connect(b->export, "clicked", G_CALLBACK(on_export), b);
 	g_signal_connect(b->del, "clicked", G_CALLBACK(on_delete), b);
 	g_signal_connect(b->sync, "clicked", G_CALLBACK(on_sync), b);
 	g_signal_connect(b->win, "key-press-event", G_CALLBACK(on_window_key), b);

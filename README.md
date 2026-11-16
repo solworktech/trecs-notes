@@ -111,6 +111,12 @@ The Settings window exists on Linux for now. On the other platforms, **Settings*
 
 **Browse notes** in the tray menu (or `trecs-notes browse`) opens a window with a search box, the list of notes (newest first) and, beside it, the selected note, which you edit in place: App, Title, Tags and the text, with the same Raw and Markdown tabs as the capture form. **Save** (Ctrl+S) stores the changes, **Revert** drops them, **Delete** removes the note after asking, and changing to another note with unsaved changes asks what to do with them. The list follows the database, so notes saved by the hotkey while the window is open appear in it.
 
+### Exporting to CSV
+
+**Export** (after **Save**) writes the notes the list shows to a CSV file: search or filter first and only those are exported (all of what the search finds, not just the first 2000 that the list holds). A file dialog offers `notes_DD_MM_YYYY.csv` in the notes folder (`$XDG_CONFIG_HOME/trecs/notes/`, or `~/trecs/notes/` without it); pick another name or folder if you like, and it asks before replacing a file. In the terminal interface the key is **F4**, and the file name is a box you can edit (a folder gets the default name, `~` is your home folder, and a file that exists is replaced only if you ask a second time).
+
+The columns are `id`, `created` and `updated` (RFC 3339, with the time zone), `app`, `title`, `tags` (separated by spaces) and `text`, newest note first, with a header row. The file is readable by you alone. A cell that starts with `=`, `+`, `-` or `@` gets a `'` in front, so that a spreadsheet shows it as text and does not run it as a formula; it is copied text, and text from a web page can be a formula too. The export is of what is stored: a note you have edited but not saved is exported as it was last saved.
+
 Searching is as you type; the rules are the same as in the terminal interface (below): whole words, `"a phrase"`, `tag:`, `app:`, `since:`, `until:`, and the **Regex** and **Match case** boxes. Ctrl+F goes to the search box.
 
 ## One copy at a time
@@ -125,7 +131,7 @@ The terminal interface has no capture form: capturing needs the desktop. It open
 
 Searching is as you type. Words are whole words, all of which must appear (the last may be a beginning, so `kube` finds `kubectl` while you are still typing); `"a phrase"` keeps words together; `tag:k8s`, `app:firefox`, `since:2026-01-31` and `until:2026-02-28` narrow the notes first. The text, the app name and the window title are all searched. **Regex** (Alt+R, off to begin with) makes the rest of the text a regular expression; **Match case** (Alt+I) works as in `trecs-edit`: off, case counts only if the text has a capital. The words are looked up in a full-text index, so they are fast on a large database; regular expressions read the notes themselves (from memory, once loaded) and results appear as they are found.
 
-**^E** edits the note's app, window title, tags and text (in the Text box, **^E** opens the text in `$VISUAL` or `$EDITOR`); **Del** deletes it, after asking. **F2** is Settings, which edits the same `config.json` as the graphical Settings window (minus the form size), including logging in; **F5** syncs with the server, both ways (see below). The hotkeys belong to the tray app, which watches the config file and restarts itself when they change.
+**^E** edits the note's app, window title, tags and text (in the Text box, **^E** opens the text in `$VISUAL` or `$EDITOR`); **Del** deletes it, after asking. **F2** is Settings, which edits the same `config.json` as the graphical Settings window (minus the form size), including logging in; **F4** exports the notes shown to a CSV file (see [Exporting to CSV](#exporting-to-csv)); **F5** syncs with the server, both ways (see below). The hotkeys belong to the tray app, which watches the config file and restarts itself when they change.
 
 ## Syncing to a Trecs server
 

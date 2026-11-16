@@ -88,6 +88,20 @@ func RunBrowse() int {
 			}
 			return capped, ""
 		},
+		ExportDefault: func() (string, string) {
+			dir, err := notes.ExportDir()
+			if err != nil {
+				return "", notes.ExportName(time.Now())
+			}
+			return dir, notes.ExportName(time.Now())
+		},
+		Export: func(text string, regex, matchCase bool, path string) (string, error) {
+			n, err := svc.ExportCSV(ctx, notes.Query{Text: text, Regex: regex, MatchCase: matchCase}, path, true)
+			if err != nil {
+				return "", fmt.Errorf("export: %s", notes.ProblemText(err))
+			}
+			return notes.ExportMessage(n, path), nil
+		},
 		Get: func(id int64) (ui.BrowseNote, error) {
 			n, err := svc.Get(id)
 			if err != nil {

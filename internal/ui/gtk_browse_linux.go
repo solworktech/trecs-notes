@@ -27,6 +27,8 @@ const (
 	bStatus = 6
 	bPoll   = 7
 	bTags   = 8
+	bExpDef = 9
+	bExport = 10
 )
 
 var (
@@ -107,6 +109,18 @@ func goBrowseAction(op C.int, a1, a2, a3, a4, a5 *C.char) *C.char {
 
 	case bPoll:
 		return C.CString(flag(h.Changed()))
+
+	case bExpDef:
+		dir, name := h.ExportDefault()
+		return C.CString(field(dir) + "\x1f" + field(name))
+
+	case bExport:
+		// a1 text, a2 regex, a3 match case, a4 path
+		msg, err := h.Export(C.GoString(a1), C.GoString(a2) == "1", C.GoString(a3) == "1", C.GoString(a4))
+		if err != nil {
+			return reply(false, err.Error())
+		}
+		return reply(true, msg)
 
 	case bTags:
 		tags := h.Tags()
