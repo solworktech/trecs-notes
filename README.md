@@ -1,5 +1,9 @@
 # Trecs Notes
 
+[![CI](https://github.com/solworktech/trecs-notes/actions/workflows/ci.yml/badge.svg)](https://github.com/solworktech/trecs-notes/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/solworktech/trecs-notes.svg)](https://pkg.go.dev/github.com/solworktech/trecs-notes)
+[![License][badge-license]][license]
+
 Select some text in any application, press a hotkey, and keep it.
 
 Trecs Notes is a small tray app. The hotkey (`Ctrl+Alt+Space` by default) opens a form holding the text you had selected, the name of the application it came from and that window's title. Add tags, press Save, and the note is stored in a local SQLite database. If you use a [Trecs](https://github.com/solworktech/trecs) server, notes can also be sent there, so they follow you across machines.
@@ -192,3 +196,6 @@ Run the tests with `go test ./...` (an X server is needed for the capture tests;
 ## License
 
 Trecs Notes is free software, released under the [GNU Affero General Public License, version 3](LICENSE) or, at your option, any later version.
+
+[license]: ./LICENSE
+[badge-license]: https://img.shields.io/github/license/solworktech/trecs-notes.svg
