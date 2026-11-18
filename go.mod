@@ -45,27 +45,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
-
-replace golang.design/x/hotkey => github.com/golang-design/hotkey v0.4.1
-
-replace golang.org/x/sys => github.com/golang/sys v0.33.0
-
-replace golang.org/x/mod => github.com/golang/mod v0.22.0
-
-replace golang.org/x/tools => github.com/golang/tools v0.29.0
-
-replace golang.org/x/text => github.com/golang/text v0.21.0
-
-replace golang.org/x/net => github.com/golang/net v0.34.0
-
-replace golang.org/x/sync => github.com/golang/sync v0.10.0
-
-replace golang.org/x/crypto => github.com/golang/crypto v0.32.0
-
-replace golang.org/x/exp => github.com/golang/exp v0.0.0-20250106191152-7588d65b2ba8
-
-replace gopkg.in/Knetic/govaluate.v3 => github.com/Knetic/govaluate v3.0.0+incompatible
-
-replace golang.design/x/mainthread => github.com/golang-design/mainthread v0.3.0
-
-replace fyne.io/systray => github.com/fyne-io/systray v1.12.2
